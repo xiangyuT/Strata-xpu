@@ -1,0 +1,15 @@
+{
+  "evidence_class": "functional_lifecycle",
+  "performance_claim": false,
+  "purpose": "Actualintegratednewoldkernelroute identity anddispatchcoverage; two-familyfilteredtrace; notdevicewholeworkloadshare/roofline/TPOTcomparison",
+  "binary_identity": "integration-01/binary.sha256",
+  "source_identity": "integration-01/source-identity.json",
+  "filters": "WideIQ4LookupProbe,WideIQ4XS,launch_down_port<10042,launch_down_port<42",
+  "session": "mat20261008r1",
+  "same_model_config_andrequests": true,
+  "warmups_excluded": 3,
+  "measured_profiled_requests": 1,
+  "resume_after_warmups": true,
+  "sampling": "No metricquery/metricsampling; unprofiledBCBseparate",
+  "failure_handling": "Immutableattemptifunitraceloaderror; cannotlabelcandidatefailurewithoutvalidshaderexecution"
+}

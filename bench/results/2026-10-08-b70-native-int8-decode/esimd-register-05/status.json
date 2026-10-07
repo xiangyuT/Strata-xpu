@@ -1,0 +1,98 @@
+{
+  "status": "candidate-rejected-mainshape-regression",
+  "correctness": [
+    {
+      "kind": "all_correctness",
+      "fixtures": 26,
+      "cases": 1040,
+      "result": "passed",
+      "control_mode2_semantically_valid": false
+    }
+  ],
+  "LUT": "65536ESIMD cases byte-exact passed",
+  "completed_cells": [
+    {
+      "N": 2560,
+      "K": 6144,
+      "T": 1,
+      "baseline-before": 31.147295142857143,
+      "esimd-register": 91.3058502,
+      "baseline-after": 31.2183487,
+      "change_pct": 192.80816992786467,
+      "drift_pct": 0.2281211155478191
+    },
+    {
+      "N": 2560,
+      "K": 6144,
+      "T": 2,
+      "baseline-before": 33.32567242857143,
+      "esimd-register": 96.80266045,
+      "baseline-after": 33.3383358,
+      "change_pct": 190.41956228641976,
+      "drift_pct": 0.037998847452258566
+    },
+    {
+      "N": 2560,
+      "K": 6144,
+      "T": 3,
+      "baseline-before": 34.673411095238095,
+      "esimd-register": 109.68398965,
+      "baseline-after": 34.64680185,
+      "change_pct": 216.456008975762,
+      "drift_pct": -0.07674250786864345
+    },
+    {
+      "N": 2560,
+      "K": 6144,
+      "T": 4,
+      "baseline-before": 35.471823190476194,
+      "esimd-register": 117.3617019047619,
+      "baseline-after": 35.40479857142857,
+      "change_pct": 231.17182785323504,
+      "drift_pct": -0.18895171721993176
+    },
+    {
+      "N": 10240,
+      "K": 2560,
+      "T": 1,
+      "baseline-before": 44.377252761904764,
+      "esimd-register": 119.43816335,
+      "baseline-after": 44.38913457142857,
+      "change_pct": 169.10673496599284,
+      "drift_pct": 0.026774549536789927
+    },
+    {
+      "N": 10240,
+      "K": 2560,
+      "T": 2,
+      "baseline-before": 48.48096223809524,
+      "esimd-register": 130.46145647619048,
+      "baseline-after": 48.49581455,
+      "change_pct": 169.05710995378388,
+      "drift_pct": 0.03063534884439889
+    },
+    {
+      "N": 10240,
+      "K": 2560,
+      "T": 3,
+      "baseline-before": 52.15739904761905,
+      "esimd-register": 143.31655647619047,
+      "baseline-after": 52.382378599999996,
+      "change_pct": 174.18569218557084,
+      "drift_pct": 0.4313473380364252
+    },
+    {
+      "N": 10240,
+      "K": 2560,
+      "T": 4,
+      "baseline-before": 56.74138528571429,
+      "esimd-register": 155.37991195238095,
+      "baseline-after": 56.8568259,
+      "change_pct": 173.56049066364344,
+      "drift_pct": 0.20345046865604122
+    }
+  ],
+  "execution": "OwnedbenchmarkPID176206SIGTERM; remainingcellsunmeasured, raw partialresultsretained",
+  "endpoint_samples": 0,
+  "production_changed": false
+}

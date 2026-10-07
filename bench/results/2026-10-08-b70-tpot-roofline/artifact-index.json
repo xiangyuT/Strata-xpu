@@ -275,8 +275,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 17083,
-      "sha256": "176fe92f19740d14e1970c33734a5e998fba2b6fbf817667f1373bf6e3740792"
+      "bytes": 17922,
+      "sha256": "8e329b0519f2ccd12675dfa9304393dafd02aede966e67336e3438ebe9d2f828"
     },
     {
       "path": "aggregate-roofline.json",
@@ -370,8 +370,8 @@
     },
     {
       "path": "final-summary.json",
-      "bytes": 3985,
-      "sha256": "69e035e72bd9cf94cb21ee583d3f0a6c5b799499100ceeb88d924eab403c2fba"
+      "bytes": 4813,
+      "sha256": "db3317e4dcd55c9734f4b1be832fd683becd3097582c9a23b37d68f314cc440d"
     },
     {
       "path": "gr-layout-audit-notice.json",
@@ -534,5 +534,6 @@
       "sha256": "994413df40a826b84dce3bedb51d31ba7006b97886588e8b7a9b7d5078079731"
     }
   ],
-  "notice": "Historical plans/measurements preserve their original identities; new provenance/layout notices qualify old present-tense proposals. No raw models, executable binaries or multi-GB captures in Git."
+  "notice": "Historical plans/measurements preserve their original identities; new provenance/layout notices qualify old present-tense proposals. No raw models, executable binaries or multi-GB captures in Git.",
+  "dated_publication_notice": "2026-10-08: README/final classification updated for userdecision andlinked6.68pctfollowup; allrawmeasurements/sourceidentitiespreserved."
 }

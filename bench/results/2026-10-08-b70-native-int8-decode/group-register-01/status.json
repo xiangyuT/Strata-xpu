@@ -1,0 +1,18 @@
+{
+  "status": "candidate-rejected-mainshape-regression",
+  "correctness": "65536LUT+1040real-weightmatrices byte-exact passed",
+  "completed_cell": {
+    "N": 10240,
+    "K": 2560,
+    "T": 1,
+    "baseline-before": 44.39396255,
+    "group-register": 116.4625873,
+    "baseline-after": 44.374402095238096,
+    "change_pct": 162.3966043881547,
+    "drift_pct": -0.04406106965529899
+  },
+  "execution": "OwnedbenchmarkPID172812 SIGTERM after first complete B/C/B cell, no restart; remaining cells unmeasured",
+  "production_route_changed": false,
+  "endpoint_samples": 0,
+  "decision": "Reject subgroup lookup; inspect emitted code before next implementation"
+}

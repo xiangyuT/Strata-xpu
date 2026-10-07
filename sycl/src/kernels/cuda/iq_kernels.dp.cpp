@@ -14,6 +14,7 @@
 #include "strata/kernels/iq_dequant.hpp"
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
+#include "strata/kernels/q2_0_decode.hpp"
 
 #define GGML_COMMON_DECL_SYCL
 #define GGML_COMMON_IMPL_SYCL
@@ -644,6 +645,26 @@ template<> struct Fmt<29> { static constexpr int qk = 256, ipb = 8, step = 1;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq1_m_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<42> { static constexpr int qk = 64, ipb = 2, step = 1;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q2_0_q8_1(v, y, kbx, iqs); } };
+// Private diagnostic trait, never a GGUF format or a production switch entry.
+template<> struct Fmt<10042> {
+    static constexpr int qk = 64, ipb = 2, step = 1;
+    static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) {
+        const auto* b = (const block_q2_0*)v + kbx;
+        const float d2 = b->d;
+        const auto* qs = (const int16_t*)b->qs + iqs * 4;
+        const auto* a = y + iqs;
+        int sumi = 0;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const auto w = q2_0_decode8((uint32_t)qs[j]);
+            const int u = get_int_b4(a->qs, j * 2), z = get_int_b4(a->qs, j * 2 + 1);
+            sumi = ggml_cuda_dp4a(u, w.x(), sumi);
+            sumi = ggml_cuda_dp4a(z, w.y(), sumi);
+        }
+        const float d8 = a->ds[0];
+        return d2 * d8 * sumi;
+    }
+};
 template<> struct Fmt<12> { static constexpr int qk = 256, ipb = QI4_K / VDR_Q4_K, step = VDR_Q4_K;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_q4_K_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<13> { static constexpr int qk = 256, ipb = QI5_K / VDR_Q5_K, step = VDR_Q5_K;
@@ -1334,6 +1355,19 @@ template <> struct Multi<42> {   // q2_0 (down)
         ds = chunk->ds[0];
     }
     __dpct_inline__ static float finish(int s0, int s1, const MultiW& m, float ds) { return m.d * ds * (float) (s0 + s1); }
+};
+
+template<> struct Multi<10042> : Multi<42> {
+    __dpct_inline__ static void prep(const void* vbq, int kbx, int iqs, MultiW& m, const void* = nullptr) {
+        const auto* b = (const block_q2_0*)vbq + kbx;
+        const auto* qs = (const int16_t*)b->qs + iqs * 4;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const auto w = q2_0_decode8((uint32_t)qs[j]);
+            m.w[2*j] = w.x(); m.w[2*j+1] = w.y();
+        }
+        m.d = b->d;
+    }
 };
 
 // One row against E activations at once, LANES lanes per row.
@@ -2049,6 +2083,7 @@ bool g_old_kernels = env_on("STRATA_OLD_IQ_MMVQ");
 // dots with aligned loads and the IQ4 codebook in registers) are the measured ones, so they stay the default for
 // every format; STRATA_EXPERT_SPLIT=1 takes upstream's multi kernels, launched with their own grid (GU_ROWS rows).
 bool g_split_multi = env_on("STRATA_EXPERT_SPLIT");
+bool g_q2_word_expand = env_on("STRATA_SYCL_Q2_WORD_EXPAND");
 
 template <int TY>
 void launch_mmvq(const uint8_t *W, size_t rb, const block_q8_1 *X, float *y,
@@ -2307,6 +2342,12 @@ void launch_down(dpct::dim3 grid, dpct::queue_ptr s,
                  const int32_t *n_groups, const int32_t *ent_dst,
                  const block_q8_1 *hq, const NativeExpertLayout &L,
                  float *out) {
+    if constexpr (TD == 42) {
+        if (g_q2_word_expand && !g_old_kernels && !g_split_multi && down_lanes() == 8) {
+            launch_down_port<10042,8>(grid.y,s,grp_ptr,grp_start,n_groups,ent_dst,hq,L,out);
+            return;
+        }
+    }
     if constexpr (!kSplit<TD>) {
 
         launch_down_lanes<TD>(grid, s, grp_ptr, grp_start, n_groups, ent_dst, hq, L, out);
@@ -2643,6 +2684,19 @@ bool g_grouped_v1 = env_on("STRATA_GROUPED_V1");
 
 void native_grouped_set_v1(bool v1) { g_grouped_v1 = v1; }
 void native_expert_set_iq2xxs_reuse(bool enabled) { g_iq2xxs_reuse = enabled; }
+
+void native_expert_down_q2_probe(bool candidate, const NativeExpertLayout& layout,
+                               const unsigned long long* pointers, const int32_t* starts,
+                               const int32_t* groups, const int32_t* destinations,
+                               const void* h_q8_1, float* output, int64_t capacity, void* stream) {
+    if (layout.d_type != 42 || capacity <= 0 || !pointers || !starts || !groups || !destinations || !h_q8_1 || !output || !stream)
+        throw std::invalid_argument("Q2_0 down probe contract");
+    if (candidate) launch_down_port<10042,8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, destinations,
+                                            static_cast<const block_q8_1*>(h_q8_1), layout, output);
+    else launch_down_port<42,8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, destinations,
+                                static_cast<const block_q8_1*>(h_q8_1), layout, output);
+    check("Q2_0 down probe");
+}
 
 void native_expert_gu_probe(const NativeExpertLayout& layout, const unsigned long long* pointers,
                             const int32_t* starts, const int32_t* groups, const int32_t* tokens,

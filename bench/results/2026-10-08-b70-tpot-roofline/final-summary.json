@@ -1,6 +1,6 @@
 {
   "date": "2026-10-08",
-  "status": "TPOT-first four-candidate iteration, trace/roof modeling and matched validation complete",
+  "status": "Experiment recorded; insufficient for performance delivery; iteration continuing",
   "base_revision": "aeea0ab7334bca3db4ef1f814ce4275d4d10c991",
   "branch": "dev/b70-iq2xs-sycl-20261007",
   "engine_binary_sha256": "1b260dc85a0c14349f41a1f3e037356cef7f63a572197c8d8d63da76e7fd6032",
@@ -115,5 +115,20 @@
     "Direct-API projection withdrawn; packed-output graph sidecar transfer invalid; corrected layout sidecar still does not predict endpoint.",
     "Matched cross-platform client TTFT/TPOT unavailable; prior community engine throughput remains whole-system reference."
   ],
-  "remote_authorization": "User explicitly allowed push to xiangyuT/Strata existing dev branch; no PR/main/version change authorized or performed."
+  "remote_authorization": "User explicitly allowed push to xiangyuT/Strata existing dev branch; no PR/main/version change authorized or performed.",
+  "user_decision_notice": {
+    "date": "2026-10-08",
+    "decision": "0.501% is not a deliverable performance improvement; continue optimization",
+    "delivery_requirement": "client TPOT at least5% improvement and stable repeat measurements",
+    "superseded_status": "TPOT-first four-candidate iteration, trace/roof modeling and matched validation complete",
+    "current_status": "optimization in progress; previous completion claim withdrawn",
+    "next_baseline": "Both previous opt-in flags off; fixed prefill/model/KV/MTP/cache fixture unchanged"
+  },
+  "current_followup": {
+    "date": "2026-10-08",
+    "record": "../2026-10-08-b70-native-int8-decode/README.md",
+    "client_TPOT_paired_mean_change_pct": -6.68083388839236,
+    "old_small_gain_flags_off_in_followup": true,
+    "historical_measurements_preserved": true
+  }
 }

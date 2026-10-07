@@ -1,0 +1,20 @@
+{
+  "candidate": "ESIMD register lookup and same-order virtual32-lane row",
+  "source": "Native IQ4_XS exact shape contracts, existingoneAPIESIMD and referenced omnituningESIMD patterns",
+  "base": "0214cecaf4b27252a52e9e1706a2ed3f60076cee",
+  "reference_revision": "78e2318e7c969184b5c2477dd56c9920ae272772",
+  "pretrial_evidence": {
+    "full_decode_IQ4XS_share_pct": 19.583978366621317,
+    "native_NC4_static_cmp": 101,
+    "native_NC4_static_sel": 96,
+    "bitselect_component_weighted_saving_ms": 93.2390674285975,
+    "counterfactual_no_LUT_difference_ms": 177.34789845467753,
+    "interpretation": "BFN alone insufficient for5% target. Eliminate per-byte compare/select/variable-table shifts via register indirect reads and remove subgroup shuffle overhead via explicit vectorregions. Controls are screening scenarios, not predictions."
+  },
+  "contract": "IQ4_XS136B/256 andQ8_1 36B/32 unchanged; eachvirtual lane accumulates identical kb=sub+4i contributions; identical XOR16/8/4/2/1 reduction tree for lane0; unsignedweightwords reinterpretedas signedbytes forDP4A; masks skipinvalid k exactly",
+  "implementation": "oneexplicit SIMD32 vector perrow;16workitems/WG; register16entrytable viaiselect; statelessglobalgather; FP32multiply/add withFMA contractionoff to match native emittedmul/add",
+  "correctness": "ESIMD LUT all16^4 inputs;26actualweightsets inclactualdraftsubset; T1..8 andfivepatterns, alloutputbytes/nativebaseline, graph replay, finite, guard/inactive rows",
+  "micro": "T1..4 declared21cells;B/C/B;2s1000callwarm and3s2000calltimed;only aftercorrectness;nativeproductionbaseline directly reused",
+  "stop": "NoE2E on correctnessfailure, main-shape regression or unstablemicro. Delivery remains>=5% clientTPOT withstable repeat, notcomponentgain",
+  "production_route_changed": false
+}

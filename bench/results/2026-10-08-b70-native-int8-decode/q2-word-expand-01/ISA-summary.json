@@ -1,0 +1,25 @@
+{
+  "candidate_static_opcodes": {
+    "mov": 222,
+    "and": 22,
+    "add": 227,
+    "mad": 1,
+    "send": 53,
+    "or": 13,
+    "shl": 70,
+    "asr": 15,
+    "cmp": 15,
+    "goto": 15,
+    "mul": 124,
+    "macl": 48,
+    "mach": 35,
+    "shr": 16,
+    "sync": 2,
+    "join": 11,
+    "bfn": 36,
+    "xor": 24,
+    "dp4a": 56
+  },
+  "comparison": "plan.jsonoldISA",
+  "limits": "Counts coverentireentry1/2/4 andloops, notlatencyproof. Integerdot/scalesunchanged."
+}

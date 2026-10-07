@@ -163,6 +163,9 @@ foreach(k IN LISTS _kernel_cu)
 endforeach()
 strata_resolve(_kernels ${_kernel_files} src/kernels/ngram.cpp src/ngram/ple_reader.cpp src/platform/direct_file.cpp)
 list(APPEND _kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/qsa_prompt_attn_xmx.dp.cpp)   # port-only: the XMX prompt attention
+list(APPEND _kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/iq4_esimd_probe.cpp)
+set_source_files_properties(src/kernels/iq4_esimd_probe.cpp PROPERTIES COMPILE_OPTIONS
+  "-fsycl-esimd-force-stateless-mem;-ffp-contract=off")
 add_library(strata_kernels STATIC ${_kernels})
 target_include_directories(strata_kernels PRIVATE ${STRATA_ROOT}/third_party/ggml)
 target_link_libraries(strata_kernels PUBLIC strata_core)
@@ -267,6 +270,10 @@ if(STRATA_SYCL_PARITY)
   target_link_libraries(gr_lo_once_bench PRIVATE strata_kernels)
   add_executable(iq2xxs_reuse_bench src/kernels/iq2xxs_reuse_bench.cpp)
   target_link_libraries(iq2xxs_reuse_bench PRIVATE strata_kernels)
+  add_executable(iq4_decode_cost_bench src/kernels/iq4_decode_cost_bench.cpp)
+  target_link_libraries(iq4_decode_cost_bench PRIVATE strata_kernels)
+  add_executable(q2_decode_cost_bench src/kernels/q2_decode_cost_bench.cpp)
+  target_link_libraries(q2_decode_cost_bench PRIVATE strata_kernels)
   add_executable(xmx_gemm_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/xmx_gemm_bench.cpp)   # XMX quantized GEMM vs dequant+oneMKL
   target_link_libraries(xmx_gemm_bench PRIVATE strata_kernels strata_prefill)   # -qmkl for the oneMKL reference
   # one native expert three ways on real GGUF rows (ggml reference, CPU path, GPU native_expert_grouped):

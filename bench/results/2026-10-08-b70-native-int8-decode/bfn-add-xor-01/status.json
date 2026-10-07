@@ -1,0 +1,8 @@
+{
+  "status": "complete-component-screen",
+  "cells": 21,
+  "correctness": "passed",
+  "endpoint_samples": 0,
+  "delivery_target_met": false,
+  "decision": "RetainoldBFN; newmaskvariantnotchosen"
+}

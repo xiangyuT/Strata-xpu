@@ -1,0 +1,12 @@
+{
+  "base": "0214cecaf4b27252a52e9e1706a2ed3f60076cee",
+  "source_sha256": {
+    "sycl/src/kernels/cuda/native_mmvq.dp.cpp": "819b89b330740dfeddb128f7c09c38b97bcc450e68d12f2b0aeeb014ab310350",
+    "sycl/src/kernels/iq4_decode_cost_bench.cpp": "1c7681ff1696b55c2312198aca849bcf936d265d76d646f19e6e882e24435930",
+    "sycl/include/strata/kernels/iq4_lut.hpp": "8e2e7e676728482978372b41d7ded60277b077d1f24a5d64c083d552ab658653",
+    "sycl/include/strata/kernels/native_mmvq_tuning.hpp": "a5f8ce9013e4e307edc6b4c5500b7bf98d0c9157f0390155484cfde85eaa2c0e",
+    "sycl/CMakeLists.txt": "0f4d236dd808881d57c49fe2e0af601138014693a1bbf96b22624183a4603c12"
+  },
+  "repair": "Original native kernel body/float apply used in all variants; no hand-copied arithmetic or loosened tolerance",
+  "production_dispatch_changed": false
+}

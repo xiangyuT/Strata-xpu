@@ -1,0 +1,222 @@
+{
+  "evidence_class": "native_graph_component_screen",
+  "correctness_matrices": 1040,
+  "LUT_combinations": 65536,
+  "cells": [
+    {
+      "kind": "micro_cell",
+      "N": 10240,
+      "K": 2560,
+      "T": 1,
+      "change_pct": -12.252834,
+      "baseline_drift_pct": -0.009803,
+      "base_us": 44.44008255,
+      "candidate_us": 38.99491314285714
+    },
+    {
+      "kind": "micro_cell",
+      "N": 10240,
+      "K": 2560,
+      "T": 2,
+      "change_pct": -12.025373,
+      "baseline_drift_pct": -0.035532,
+      "base_us": 48.348773800000004,
+      "candidate_us": 42.534653142857145
+    },
+    {
+      "kind": "micro_cell",
+      "N": 10240,
+      "K": 2560,
+      "T": 3,
+      "change_pct": -9.363788,
+      "baseline_drift_pct": 0.200541,
+      "base_us": 52.13415226428572,
+      "candidate_us": 47.252420550000004
+    },
+    {
+      "kind": "micro_cell",
+      "N": 10240,
+      "K": 2560,
+      "T": 4,
+      "change_pct": -9.4044,
+      "baseline_drift_pct": -0.030665,
+      "base_us": 56.88475842261904,
+      "candidate_us": 51.5350883
+    },
+    {
+      "kind": "micro_cell",
+      "N": 2560,
+      "K": 6144,
+      "T": 1,
+      "change_pct": -9.938626,
+      "baseline_drift_pct": -0.081154,
+      "base_us": 30.964377071428572,
+      "candidate_us": 27.886943523809524
+    },
+    {
+      "kind": "micro_cell",
+      "N": 2560,
+      "K": 6144,
+      "T": 2,
+      "change_pct": -12.696072,
+      "baseline_drift_pct": 0.052872,
+      "base_us": 33.29491288095238,
+      "candidate_us": 29.0677668
+    },
+    {
+      "kind": "micro_cell",
+      "N": 2560,
+      "K": 6144,
+      "T": 3,
+      "change_pct": -9.236789,
+      "baseline_drift_pct": 0.334589,
+      "base_us": 34.592125851190474,
+      "candidate_us": 31.396924
+    },
+    {
+      "kind": "micro_cell",
+      "N": 2560,
+      "K": 6144,
+      "T": 4,
+      "change_pct": -5.33306,
+      "baseline_drift_pct": -0.240085,
+      "base_us": 35.49364053095238,
+      "candidate_us": 33.60074338095238
+    },
+    {
+      "kind": "micro_cell",
+      "N": 6144,
+      "K": 2560,
+      "T": 1,
+      "change_pct": -12.511382,
+      "baseline_drift_pct": 0.042264,
+      "base_us": 27.384283333333336,
+      "candidate_us": 23.95813105
+    },
+    {
+      "kind": "micro_cell",
+      "N": 6144,
+      "K": 2560,
+      "T": 2,
+      "change_pct": -11.806389,
+      "baseline_drift_pct": -0.265117,
+      "base_us": 29.510991166666667,
+      "candidate_us": 26.0268088
+    },
+    {
+      "kind": "micro_cell",
+      "N": 6144,
+      "K": 2560,
+      "T": 3,
+      "change_pct": -10.469038,
+      "baseline_drift_pct": 0.07592,
+      "base_us": 32.05856612619048,
+      "candidate_us": 28.702342523809524
+    },
+    {
+      "kind": "micro_cell",
+      "N": 6144,
+      "K": 2560,
+      "T": 4,
+      "change_pct": -9.005706,
+      "baseline_drift_pct": -0.043804,
+      "base_us": 34.41986439642857,
+      "candidate_us": 31.32011257142857
+    },
+    {
+      "kind": "micro_cell",
+      "N": 12288,
+      "K": 2560,
+      "T": 1,
+      "change_pct": -11.988508,
+      "baseline_drift_pct": 0.1793,
+      "base_us": 52.678811952380954,
+      "candidate_us": 46.36340825
+    },
+    {
+      "kind": "micro_cell",
+      "N": 12288,
+      "K": 2560,
+      "T": 2,
+      "change_pct": -11.847805,
+      "baseline_drift_pct": -0.058441,
+      "base_us": 57.66729430952381,
+      "candidate_us": 50.83498566666667
+    },
+    {
+      "kind": "micro_cell",
+      "N": 12288,
+      "K": 2560,
+      "T": 3,
+      "change_pct": -9.860825,
+      "baseline_drift_pct": -0.002639,
+      "base_us": 62.73652596666666,
+      "candidate_us": 56.55018704761905
+    },
+    {
+      "kind": "micro_cell",
+      "N": 12288,
+      "K": 2560,
+      "T": 4,
+      "change_pct": -7.931578,
+      "baseline_drift_pct": -0.045596,
+      "base_us": 67.37425376190477,
+      "candidate_us": 62.030412285714284
+    },
+    {
+      "kind": "micro_cell",
+      "N": 106299,
+      "K": 2560,
+      "T": 1,
+      "change_pct": -15.6201,
+      "baseline_drift_pct": 0.037043,
+      "base_us": 428.1188636666667,
+      "candidate_us": 361.24627066666665
+    },
+    {
+      "kind": "micro_cell",
+      "N": 248320,
+      "K": 2560,
+      "T": 1,
+      "change_pct": -14.536288,
+      "baseline_drift_pct": 0.048802,
+      "base_us": 979.9138394285715,
+      "candidate_us": 837.4707372380952
+    },
+    {
+      "kind": "micro_cell",
+      "N": 248320,
+      "K": 2560,
+      "T": 2,
+      "change_pct": -14.95209,
+      "baseline_drift_pct": 0.024862,
+      "base_us": 1081.1206177857143,
+      "candidate_us": 919.4704933809523
+    },
+    {
+      "kind": "micro_cell",
+      "N": 248320,
+      "K": 2560,
+      "T": 3,
+      "change_pct": -11.946271,
+      "baseline_drift_pct": 0.025034,
+      "base_us": 1168.8835798333334,
+      "candidate_us": 1029.245576
+    },
+    {
+      "kind": "micro_cell",
+      "N": 248320,
+      "K": 2560,
+      "T": 4,
+      "change_pct": -11.480769,
+      "baseline_drift_pct": -0.009993,
+      "base_us": 1268.6944699285714,
+      "candidate_us": 1123.0385853333332
+    }
+  ],
+  "same_contract03_trace_covered_ms": 669.3842909999995,
+  "representative_micro_weighted_screen_ms": 72.37167933574892,
+  "old_BFN_screen_ms": 93.2390674285975,
+  "limits": "Projection isscreening only,03 timingcapture differsfromoriginalfullprofile. Word countsnotlatencybound; no modelendpointtiming thiscandidate.",
+  "decision": "Newmask removes32MUL instructions butadds32ADD/32XOR and is slowerthanoldBFN at matchedrepresentative cells. KeepoldBFN ascomponent; no>=5% delivery."
+}

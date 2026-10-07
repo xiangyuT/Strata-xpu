@@ -1,0 +1,48 @@
+{
+  "evidence_class": "native_graph_component_screen",
+  "decode_words": 65536,
+  "real_group_fixtures": 32,
+  "patterns_per_fixture": 5,
+  "real_weight_group_byte_checks": 160,
+  "down_candidate_equals_baseline_and_full_expert_output": true,
+  "micro_cells": [
+    {
+      "kind": "micro_cell",
+      "T": 1,
+      "change_pct": -44.071304,
+      "baseline_drift_pct": -0.018142,
+      "baseline-before": 40.33442314285714,
+      "candidate": 22.556470714285716,
+      "baseline-after": 40.32710566666667
+    },
+    {
+      "kind": "micro_cell",
+      "T": 2,
+      "change_pct": -41.229947,
+      "baseline_drift_pct": 0.011481,
+      "baseline-before": 55.573958,
+      "candidate": 32.662719333333335,
+      "baseline-after": 55.58033866666667
+    },
+    {
+      "kind": "micro_cell",
+      "T": 3,
+      "change_pct": -42.554796,
+      "baseline_drift_pct": 0.030677,
+      "baseline-before": 78.30926076190477,
+      "candidate": 44.991814399999996,
+      "baseline-after": 78.33328404761905
+    },
+    {
+      "kind": "micro_cell",
+      "T": 4,
+      "change_pct": -45.302349,
+      "baseline_drift_pct": -0.002526,
+      "baseline-before": 81.76692071428572,
+      "candidate": 44.724020095238096,
+      "baseline-after": 81.76485504761905
+    }
+  ],
+  "limits": "8representativegroupfixtures/T, rotateddevice/hostUSM; notfullmodelinputs/cachehistory. Weightformat/activationquant/dot/FPunchanged; noendpointTPOTmeasuredhere.",
+  "decision": "All4Tcells41-45pctfaster withabsdrift<=0.031pct; progressproductionopt-in integration+boundaryfunctional+fullmodelBCB. User>=5% deliverynotyetachieved"
+}

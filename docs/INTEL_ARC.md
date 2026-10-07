@@ -405,6 +405,16 @@ per-arm configuration files. Failed profile/startup attempts remain preserved in
 
 ## Decode roofs and TPOT tuning (2026-10-08)
 
+> **Follow-up, 2026-10-08:** the
+> [native INT8 decode iteration](../bench/results/2026-10-08-b70-native-int8-decode/README.md)
+> measures 6.68% client TPOT improvement with the prior small-gain options off.
+> The evidence below remains historical; its 0.501% recommendation is withdrawn.
+
+> **User decision, 2026-10-08:** the 0.501% result below is an experimental
+> observation and is not accepted for performance delivery. Its candidate-use
+> recommendation is withdrawn. Iteration continues toward at least 5% client
+> TPOT improvement with stable repeat measurements; historical data are preserved.
+
 The same single B70, IQ2_XS weights, fresh 32K/256 requests, INT8 KV, fixed cache
 and MTP policy are used. Client TTFT, client TPOT, IPC-arrival TPOT and engine
 average decode time remain separate. Measured standalone roofs are 530.209 GB/s
@@ -451,3 +461,33 @@ prefill settings from the previous campaign and a normal trace-OFF build.
 Both new flags default off; the expert change applies only to format-16 grouped
 GU at eight lanes per row, and its component micro has a T=1 regression.
 [Final B/C/B evidence](../bench/results/2026-10-08-b70-tpot-roofline/final-bcb-summary.json).
+
+## Material single-B70 decode improvement (2026-10-08)
+
+The same original IQ2_XS weights, fresh 32K/256 workload and fixed cache/KV/MTP
+configuration measure client TPOT **14.568688 → 13.595418 ms (-6.68%)**. Three
+paired changes are -6.80%, -6.70% and -6.54%; before/after baseline drift is
+0.0068%. All output text and draft offered/accepted counts match; actual cache
+capacity stays 18,609 slots and the host mirror stays 5,967 experts/8.02 GiB.
+TTFT is 31.958 → 31.979 s (+0.064%), with no measured benefit.
+
+Select `STRATA_SYCL_IQ4_LOOKUP=1 STRATA_SYCL_Q2_WORD_EXPAND=1` for the measured
+combination. Both default off. The first changes the IQ4_XS dense lookup; the
+second expands the model's Q2_0 down weights to signed INT8 bytes directly,
+retaining existing native dot/scales/FP32 reduction. It applies to the down
+format-42 eight-lane route with old/split modes off. These formats are part of
+the unchanged mixed IQ2_XS GGUF. The previous GR/IQ2_XXS reuse flags are off in
+all three new arms; retained prefill settings are unchanged.
+
+Actual decode ISA uses INT8 SIMD `dp4a`; these changes do not introduce XMX
+`dpas`. The standalone XMX and reference oneDNN kernels have different format,
+activation and group-scale contracts. Prefill's oneMKL calls alone do not prove
+which actual DPAS implementation was selected. Kernel byte checks, T1–T8/host-USM
+boundaries, grouped parity and filtered runtime route proof pass. Builds and GPU
+tests run only inside the existing omix container, using host weights read-only.
+Versions and legacy default routes are preserved.
+
+The [iteration report](../bench/results/2026-10-08-b70-native-int8-decode/README.md)
+contains the frozen three-sample development B/C/B plan, TTFT/TPOT boundaries,
+per-pair data, ISA/roof screening, failed experiments and raw-artifact hashes.
+It makes no formal or other-model/GPU acceptance claim.

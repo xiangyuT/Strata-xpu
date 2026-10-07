@@ -30,6 +30,8 @@
 #include "strata/sycl_queue.hpp"
 #include "strata/workload_trace.hpp"
 #include "strata/kernels/native_mmvq.hpp"
+#include "strata/kernels/native_mmvq_tuning.hpp"
+#include "strata/kernels/iq4_lut.hpp"
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 #include "strata/kernels/iq_kernels.hpp"
@@ -1648,6 +1650,53 @@ struct WideIQ4XS {
         return r.d * (float) a->ds[0] * (float) dp4a4(r.hi, ld_q8_16(a, 1), dp4a4(r.lo, ld_q8_16(a, 0), 0));
     }
 };
+template<bool NoCodebook, bool AddXorMask = false> struct WideIQ4LookupProbe : WideIQ4XS {
+    static W load(const Block* b, int g) {
+        W r; r.sb = g;
+        const auto* q2 = reinterpret_cast<const sycl::int2*>(b->qs + 16 * g);
+        const sycl::int2 qa = q2[0], qb = q2[1];
+        const uint32_t v[4] = {(uint32_t)qa.x(), (uint32_t)qa.y(), (uint32_t)qb.x(), (uint32_t)qb.y()};
+        int lo[4], hi[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const uint32_t lower = v[i] & 0x0f0f0f0f, upper = (v[i] >> 4) & 0x0f0f0f0f;
+            if constexpr (NoCodebook) { lo[i] = (int)lower; hi[i] = (int)upper; }
+            else { lo[i] = (int)iq4_decode::bit_select_impl<AddXorMask>(lower); hi[i] = (int)iq4_decode::bit_select_impl<AddXorMask>(upper); }
+        }
+        r.lo = {lo[0], lo[1], lo[2], lo[3]}; r.hi = {hi[0], hi[1], hi[2], hi[3]};
+        const int ls = ((b->scales_l[g / 2] >> (4 * (g & 1))) & 15) | (((b->scales_h >> (2 * g)) & 3) << 4);
+        r.d = (float)b->d * (float)(ls - 32);
+        return r;
+    }
+    // apply is inherited verbatim, retaining the original float expression.
+};
+struct WideIQ4GroupLookup : WideIQ4XS {
+    __dpct_inline__ static uint32_t lookup(uint32_t word, uint32_t lane_value) {
+        const auto sg = sycl::ext::oneapi::this_work_item::get_sub_group();
+        uint32_t result = 0;
+#pragma unroll
+        for (int b = 0; b < 4; ++b) {
+            const uint32_t index = (word >> (8 * b)) & 15;
+            result |= sycl::select_from_group(sg, lane_value, index) << (8 * b);
+        }
+        return result;
+    }
+    static W load(const Block* b, int g, uint32_t lane_value) {
+        W r; r.sb = g;
+        const auto* q = reinterpret_cast<const sycl::int2*>(b->qs + 16 * g);
+        const auto a = q[0], c = q[1];
+        const uint32_t v[] = {(uint32_t)a.x(), (uint32_t)a.y(), (uint32_t)c.x(), (uint32_t)c.y()};
+        int lo[4], hi[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            lo[i] = (int)lookup(v[i] & 0x0f0f0f0f, lane_value);
+            hi[i] = (int)lookup((v[i] >> 4) & 0x0f0f0f0f, lane_value);
+        }
+        r.lo = {lo[0],lo[1],lo[2],lo[3]}; r.hi = {hi[0],hi[1],hi[2],hi[3]};
+        const int ls = ((b->scales_l[g / 2] >> (4 * (g & 1))) & 15) | (((b->scales_h >> (2 * g)) & 3) << 4);
+        r.d = (float)b->d * (float)(ls - 32); return r;
+    }
+};
 template <typename F, int NCOLS>
 void native_mmvq_wide_kernel(const typename F::Block* __restrict__ w, const Q81Block* __restrict__ x,
                              float* __restrict__ y, int n_in, int n_out) {
@@ -1659,10 +1708,24 @@ void native_mmvq_wide_kernel(const typename F::Block* __restrict__ w, const Q81B
     const int g = lane & 7, sub = lane >> 3;
     const typename F::Block* wr = w + std::size_t(row) * blocks_per_row;
     float acc[NCOLS] = {};
-    for (int kbx = sub; kbx < blocks_per_row; kbx += 4) {
-        const typename F::W wv = F::load(wr + kbx, g);
+    if constexpr (std::is_same_v<F, WideIQ4GroupLookup>) {
+        const uint32_t lane_value = iq4_lut4((uint32_t)(lane & 15)) & 255;
+        // All subgroup members execute every integer shuffle, including the
+        // incomplete final group. Invalid virtual lanes skip the FP update.
+        for (int k0 = 0; k0 < blocks_per_row; k0 += 4) {
+            const int kbx = k0 + sub;
+            const typename F::W wv = F::load(wr + (kbx < blocks_per_row ? kbx : 0), g, lane_value);
+            if (kbx < blocks_per_row) {
 #pragma unroll
-        for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+                for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+            }
+        }
+    } else {
+        for (int kbx = sub; kbx < blocks_per_row; kbx += 4) {
+            const typename F::W wv = F::load(wr + kbx, g);
+#pragma unroll
+            for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+        }
     }
     auto sg = item.get_sub_group();
 #pragma unroll
@@ -2344,6 +2407,13 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
     validate_pointer(x_q8_1);
     validate_pointer(y);
     validate_stream(stream);
+    static const bool use_bit_select = [] {
+        const char* v = std::getenv("STRATA_SYCL_IQ4_LOOKUP");
+        return v && std::atoi(v) != 0;
+    }();
+    if (use_bit_select && try_wide<WideIQ4LookupProbe<false>>(weights, x_q8_1, y, n_in, n_out, ncols, stream)) {
+        launch_check(); return;
+    }
     if (try_wide<WideIQ4XS>(weights, x_q8_1, y, n_in, n_out, ncols, stream)) { launch_check(); return; }
     if (ncols > 1) {
         launch_multi<IQ4XSTraits>(weights, x_q8_1, y, n_in, n_out, ncols, stream);
@@ -2410,6 +2480,36 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
                     });
         });
     }
+    launch_check();
+}
+
+void native_iq4_group_lut_probe(unsigned int* output, void* stream) {
+    validate_pointer(output); validate_stream(stream);
+    const auto s = strata::q_of(stream);
+    s->parallel_for(sycl::nd_range<1>(65536, 128),
+        [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(32)]] {
+            const uint32_t v = item.get_global_linear_id();
+            const uint32_t lane = item.get_sub_group().get_local_linear_id();
+            const uint32_t word = (v & 15) | ((v & 240) << 4) |
+                ((v & 3840) << 8) | ((v & 61440) << 12) | ((v * 7919) & 0xf0f0f0f0);
+            output[v] = WideIQ4GroupLookup::lookup(word, iq4_lut4(lane & 15) & 255);
+        });
+    launch_check();
+}
+
+void native_iq4_xs_decode_probe(int mode, const void* weights, const void* x, float* y,
+                               int K, int N, int T, void* stream) {
+    if (mode == 0) { native_iq4_xs_mmvq(weights, x, y, K, N, T, stream); return; }
+    if (mode == 3) { native_iq4_xs_esimd_probe(weights, x, y, K, N, T, stream); return; }
+    validate_shape(K, T, 256); validate_pointer(weights); validate_pointer(x); validate_pointer(y); validate_stream(stream);
+    if (N <= 0) throw std::invalid_argument("IQ4 lookup probe requires positive N");
+    bool launched = false;
+    if (mode == 1) launched = try_wide<WideIQ4LookupProbe<false>>(weights, x, y, K, N, T, stream);
+    else if (mode == 2) launched = try_wide<WideIQ4LookupProbe<true>>(weights, x, y, K, N, T, stream);
+    else if (mode == 4) launched = try_wide<WideIQ4GroupLookup>(weights, x, y, K, N, T, stream);
+    else if (mode == 5) launched = try_wide<WideIQ4LookupProbe<false, true>>(weights, x, y, K, N, T, stream);
+    else throw std::invalid_argument("IQ4 lookup probe mode");
+    if (!launched) throw std::invalid_argument("IQ4 lookup probe requires native wide route");
     launch_check();
 }
 

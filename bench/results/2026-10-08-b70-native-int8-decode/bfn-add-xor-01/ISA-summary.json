@@ -1,0 +1,28 @@
+{
+  "static_opcodes": {
+    "mov": 201,
+    "and": 41,
+    "add": 120,
+    "mad": 1,
+    "ugm": 22,
+    "or": 2,
+    "shl": 15,
+    "cmp": 5,
+    "goto": 7,
+    "asr": 6,
+    "mul": 40,
+    "macl": 4,
+    "mach": 12,
+    "shr": 32,
+    "join": 6,
+    "xor": 33,
+    "dp4a": 32,
+    "b": 1,
+    "gtwy": 2,
+    "bfn": 121
+  },
+  "old_BFN_mul": 72,
+  "new_mul": 40,
+  "mask_expansion_MUL_removed": true,
+  "prediction": false
+}

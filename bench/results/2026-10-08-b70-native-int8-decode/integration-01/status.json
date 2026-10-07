@@ -1,0 +1,21 @@
+{
+  "status": "passed-functional",
+  "results": [
+    {
+      "name": "IQ4-byte-correctness",
+      "returncode": 0
+    },
+    {
+      "name": "Q2-extended-correctness",
+      "returncode": 0
+    },
+    {
+      "name": "grouped-parity-0",
+      "returncode": 0
+    },
+    {
+      "name": "grouped-parity-1",
+      "returncode": 0
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"status": "build-invalid", "error": "ThisSDK scalar_store supportsaccessor overload only; pointerstore signature usedincorrectly", "device_samples": 0, "candidate_performance_rejected": false, "repair": "ordinary scalarUSMpointerwrite, preserve arithmetic; allnewmeasurementsin02"}

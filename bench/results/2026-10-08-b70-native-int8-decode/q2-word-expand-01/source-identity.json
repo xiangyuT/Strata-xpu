@@ -1,0 +1,10 @@
+{
+  "sycl/src/kernels/cuda/iq_kernels.dp.cpp": "954d552c8d65305d2c15e556f0d5645664e1dac0283415cb2b2c65886d0d1e51",
+  "sycl/src/kernels/q2_decode_cost_bench.cpp": "9f136f4cbe1e4ce9161f3a0b0010032427bbf395ee490ee74876e7e7aa439ec8",
+  "sycl/include/strata/kernels/q2_0_decode.hpp": "fedcae6315f361d7380ffcad921f1fc6ced070cd99b38f8cb197a8f5ab00e946",
+  "sycl/include/strata/kernels/iq_tuning.hpp": "47e3ed0affbbe4d06b0484c0b3c92906f2e7d0b90ce4edadaeb32c09993dc1b6",
+  "sycl/CMakeLists.txt": "380c7e08af63f967b101e16a413a8ee06fbf2a98b76e55ba57e2c497587b0990",
+  "sycl/src/kernels/cuda/native_mmvq.dp.cpp": "7e49fd44be29b3f72fbcdf98601af7d6313a471e6bdfde750ba651273fd00307",
+  "sycl/src/kernels/iq4_esimd_probe.cpp": "a08ed0269d22d694f848961a979ac153f6dfa8826e65694becb44feeb2776969",
+  "sycl/include/strata/kernels/iq4_lut.hpp": "bc62eeb234d899374e3f4d09c70765110bdd4918b8213f873dd13f26e1bef544"
+}

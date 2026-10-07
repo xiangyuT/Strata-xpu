@@ -1,5 +1,18 @@
 # B70 decode trace, roofs and TPOT tuning, 2026-10-07–08
 
+> **Follow-up, 2026-10-08:** the next
+> [INT8 decode iteration](../2026-10-08-b70-native-int8-decode/README.md) meets
+> the requested local threshold: 6.68% client TPOT improvement, three paired
+> wins and 0.0068% baseline drift. The small-gain options below are off in both
+> new comparison arms. This page retains their historical evidence.
+
+> **User decision, 2026-10-08:** the 0.501% development observation is insufficient
+> for performance delivery. The completion/retained-candidate recommendation below
+> is superseded. The optimization remains in progress with a user-confirmed target
+> of at least 5% client TPOT improvement and stable repeat measurements. All raw
+> values and historical source/binary identities remain valid experiment records;
+> the two small-gain options stay experimental and are off in the next baseline.
+
 This follows the [prefill campaign](../2026-10-07-b70-32k-tuning/current-summary.json) from
 `aeea0ab7334bca3db4ef1f814ce4275d4d10c991`, on
 `xiangyuT/Strata:dev/b70-iq2xs-sycl-20261007`. The primary metric is client TPOT.

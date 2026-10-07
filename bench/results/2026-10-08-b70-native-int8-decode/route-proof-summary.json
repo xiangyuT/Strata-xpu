@@ -1,0 +1,31 @@
+{
+  "status": "passed-route-coverage",
+  "performance_claim": false,
+  "evidence_class": "functional_lifecycle",
+  "sample_window": {
+    "clock": "UnixEpochmicroseconds, frontendstart_epoch_ns + elapsed_s; traceGPUtimestampssameepoch",
+    "start_us": 1791407833092584.5,
+    "end_us": 1791407869667499.8,
+    "boundary": "entirefresh32768/256request; includesprefill, notclaimofexactdecode-onlyinterval",
+    "excluded": "startup/model-load,shortwarmupand32Kwarmup"
+  },
+  "kernel_calls": {
+    "IQ4XS-bitselect": 18609,
+    "Q2_0-wordexpand": 9792
+  },
+  "filtered_component_device_ms": {
+    "IQ4XS-bitselect": 622.1582160000166,
+    "Q2_0-wordexpand": 252.6966640000127
+  },
+  "raw_window_gpu_events_including_memcpy_barrier": 232434,
+  "selected_kernel_events": 28401,
+  "old_selected_routes_absent": true,
+  "output_and_MTP_equal_unprofiled_candidate_sample1": true,
+  "raw_trace": {
+    "file": "route-trace-02/strata.198005.json",
+    "bytes": 261426731,
+    "sha256": "38d04845a0d9cf3a36396d84979acc72d2a919209d444eaca8bac6e19101aaa6"
+  },
+  "limits": "Filteredtraceonly; componenttimesinstrumented, notnewfull-device denominatororendpointgain. Namesestablishoperator-route/dispatch, nottensor/layerowners. KernelcodeequivalenceandactualQ2_0format42layoutcontractseparate. Private10042traitkey isnotGGUFdatatype.",
+  "first_attempt": "route-trace-01-inconclusive.json retainedimmutable, no rawstatusrewritten"
+}
