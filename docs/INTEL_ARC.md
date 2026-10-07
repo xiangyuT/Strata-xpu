@@ -1,5 +1,10 @@
 # Intel Arc (experimental)
 
+> **Fork update, 2026-10-07:** this fork aligns the SYCL port with the shared engine headers at
+> `82f46a8c8f475f001ad76d92f58f4a4f8ffb0253`. The current build and B70 experiment are recorded in
+> [Fork build check](#fork-build-check-2026-10-07). Earlier versions and community measurements below retain
+> their original identities and conditions.
+
 Strata 0.1.39 includes an **experimental Intel Arc engine**: Strata's own engine ported to SYCL (Intel oneAPI).
 maxfridbe wrote it in [#423](https://github.com/Niko1221/Strata/pull/423), with fixes from the people testing it.
 The code is in `sycl/`, and the port's own notes, measurements and maintenance procedure are in
@@ -143,3 +148,41 @@ which WSL2 does not have.
 
 Open an issue with: the card, the driver version, `sycl-ls` output, the oneAPI version, the model and flags, and the
 engine's stderr. Results from real cards are what move this from experimental to supported.
+
+## Fork build check (2026-10-07)
+
+Built with oneAPI DPC++ 2026.1.1 and oneMKL in `intel/omix:0.4.0-devel-ubuntu24.04`, AOT `bmg-g31`, and run on one
+Arc Pro B70 (`0xE223`), Linux kernel 6.17.0-1007-intel, compute runtime 26.31.39395.13. The port's version label is
+still `0.1.39-sycl`; no project version was changed.
+
+The compatibility changes keep the existing default SYCL paths. They add the shared headers' registration-ready
+arguments, support input row strides in BF16 and native GEMM (including dequantization in row slices), and keep CUDA
+driver VMM unavailable. The multi-token gated-residual read returns false because it does not write fused q8_1
+images. Optional fused GDN history commits, fused GDN q8_1 output, resident-plan error buffers, shared-expert fused
+gate modes, and padded prefill output layouts are not implemented here: asking for them throws a named error.
+
+Six selected GPU checks pass: `gemm_stride_parity`, `gr_parity`, `gdn_parity`, `quantize_act_parity`, `kv_q8_parity`,
+and `iq_multi_parity`. `native_expert_parity` passes on the actual IQ2_XS GGUF's layers 0, 23 and 47. Through the
+HTTP server, arithmetic, a Chinese capital question, and a Python addition function pass smoke checks.
+
+IQ2_XS came from `ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF` at
+`ed59f92082b1e93c0e96d60a8b11aab089b52f09`; both shards match their published SHA-256. All 31 local BF16 MTP tensors
+match the hashes at `de4b8e4d43b917e7706784d8bb445c9af86a3540`, and were packed as q2_0. At an 8,192-token context
+with INT8 KV, 18,140 experts are in VRAM, 6,436 are mirrored in 8.66 GiB of host memory, and startup reports 2,107 MiB
+of free VRAM.
+
+Three measured requests per workload, after a separate warmup, temperature 0, seed 42, thinking off, 256 generated
+tokens, MTP `--spec 4 --spec-min-p 0.5`, `--prefill auto --no-prefill-borrow --vram-reserve-mib 1536`,
+`--adapt-every 1000000 --prompt-cache 0`. Every measured request reports zero reused prompt tokens.
+
+| Workload | Prompt tokens | Decode, three runs (tok/s) | Mean decode (tok/s) | Prompt, three runs (tok/s) |
+|---|---:|---|---:|---|
+| English explanation with a code example | 40 | 69.5 / 69.5 / 69.5 | 69.5 | 136.8 / 136.8 / 136.8 |
+| Chinese explanation | 39 | 60.1 / 59.5 / 60.1 | 59.9 | 119.1 / 119.0 / 119.0 |
+| Technical records, then an explanation | 3,946 | 66.9 / 66.9 / 67.4 | 67.1 | 863.5 / 862.7 / 862.8 |
+
+Prompts, responses, timings, settings, hashes and limitations:
+[results.json](../bench/results/2026-10-07-b70-iq2xs/results.json). This is a development experiment with no baseline
+comparison; larger contexts, vision, multi-GPU, and a complete quality evaluation were not run. The inherited CUDA
+header/runtime startup warning is misleading for this SYCL build. GPU monitor readings from the Intel wrapper
+were not used, because its sysfs reader currently selects the first Intel card.

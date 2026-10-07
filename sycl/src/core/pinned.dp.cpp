@@ -499,19 +499,20 @@ LoadStats load_experts(const std::string& path, uint8_t* dst, uint64_t blob_byte
 }
 
 LoadStats load_experts_direct(const std::string& path, uint8_t* dst, const std::vector<uint64_t>& layer_off,
-                              const std::vector<uint64_t>& layer_bytes, int threads, uint64_t chunk) {
+                              const std::vector<uint64_t>& layer_bytes, int threads, uint64_t chunk,
+                              const std::atomic<int>* ready) {
     LoadStats st;
     st.ok = false;
 #ifdef _WIN32
     constexpr uint64_t kAlign = 4096;
     if (((uintptr_t) dst % kAlign) != 0 || chunk == 0 || chunk % kAlign != 0) return st;
-    struct Piece { uint64_t off, n; };
+    struct Piece { uint64_t off, n; size_t layer; };
     std::vector<Piece> pieces;
     uint64_t bytes = 0;
     for (size_t L = 0; L < layer_off.size(); ++L) {
         if (layer_off[L] % kAlign != 0 || layer_bytes[L] % kAlign != 0) return st;
         for (uint64_t p = 0; p < layer_bytes[L]; p += chunk)
-            pieces.push_back({layer_off[L] + p, std::min<uint64_t>(chunk, layer_bytes[L] - p)});
+            pieces.push_back({layer_off[L] + p, std::min<uint64_t>(chunk, layer_bytes[L] - p), L});
         bytes += layer_bytes[L];
     }
     if (threads < 1) threads = 1;
@@ -535,6 +536,8 @@ LoadStats load_experts_direct(const std::string& path, uint8_t* dst, const std::
         for (;;) {
             const size_t i = next.fetch_add(1);
             if (i >= pieces.size()) break;
+            if (ready != nullptr)
+                while (ready->load(std::memory_order_acquire) <= int(pieces[i].layer + 1)) std::this_thread::yield();
             OVERLAPPED ov{};
             ov.Offset = (DWORD) pieces[i].off;
             ov.OffsetHigh = (DWORD) (pieces[i].off >> 32);
@@ -640,7 +643,8 @@ bool experts_unbuffered(const std::vector<std::string>& files, uint64_t arena_by
 }
 
 LoadStats load_experts_ranges(const std::string& path, uint8_t* dst, const std::vector<uint64_t>& layer_off,
-                              const std::vector<uint64_t>& layer_bytes, int threads, uint64_t chunk) {
+                              const std::vector<uint64_t>& layer_bytes, int threads, uint64_t chunk,
+                              const std::atomic<int>* ready) {
     LoadStats st;
     const uint64_t layers = (uint64_t) layer_off.size();
     st.layers = layers;
@@ -681,6 +685,8 @@ LoadStats load_experts_ranges(const std::string& path, uint8_t* dst, const std::
         for (;;) {
             const uint64_t L = next_layer.fetch_add(1);
             if (L >= layers) break;
+            if (ready != nullptr)
+                while (ready->load(std::memory_order_acquire) <= int(L + 1)) std::this_thread::yield();
             const uint64_t off = layer_off[(size_t) L];
             uint64_t remaining = layer_bytes[(size_t) L];
             uint64_t pos = 0;

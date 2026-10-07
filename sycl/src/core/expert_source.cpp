@@ -2622,6 +2622,30 @@ bool check_experts_gguf(const std::string& gguf, const strata::kernels::cpu::Exp
     }
 }
 
+uint64_t FileExpertSource::release(int64_t layer, int64_t expert) {
+    // The upstream release operation trims Windows mapped pages. This port runs on Linux.
+    (void) layer;
+    (void) expert;
+    return 0;
+}
+
+bool FileExpertSource::advise_pairs(const std::pair<int32_t, int32_t>* pairs, int64_t n) const {
+    if (base_ == nullptr || !direct_.empty() || !strata::platform::read_ahead_enabled()) return false;
+    for (int64_t i = 0; pairs != nullptr && i < n; ++i) {
+        const int64_t l = pairs[i].first, e = pairs[i].second;
+        if (l < 0 || e < 0 || l >= n_layers_ || e >= n_expert_) continue;
+        if (role_ptr_.empty()) {
+            if (const uint8_t* b = mapped_blob(l, e)) strata::platform::advise_willneed(b, layer_blob_bytes_[(size_t) l]);
+            continue;
+        }
+        for (int r = 0; r < 3; ++r) {
+            const size_t k = (size_t) (3 * l + r);
+            strata::platform::advise_willneed(role_ptr_[k] + (size_t) ((uint64_t) e * role_bytes_[k]), role_bytes_[k]);
+        }
+    }
+    return true;
+}
+
 // Plan v0.3 P6: the arena from the model's GGUF shards.  Each layer's gate, up and down tensors hold the 512
 // experts one after another; they are read in chunks and each expert's slice lands at its place in the blob
 // [gate rows | up rows | down rows] - the layout tools/iq_pack.py would have written to experts.bin.  Each role
@@ -2630,7 +2654,11 @@ bool check_experts_gguf(const std::string& gguf, const strata::kernels::cpu::Exp
 // `unbuffered` (Windows, experts_unbuffered): each chunk's 4 KiB-aligned window is read with FILE_FLAG_NO_BUFFERING into
 // an aligned buffer and scattered into the blobs - no copy through the file cache when the drive is read anyway.
 LoadStats load_experts_gguf(const std::string& gguf, uint8_t* dst, const strata::kernels::cpu::ExpertLayout& lay,
-                            int threads, bool unbuffered) {
+                            int threads, bool unbuffered, const std::atomic<int>* ready) {
+    auto wait_ready = [ready](int64_t l) {
+        if (ready != nullptr)
+            while (ready->load(std::memory_order_acquire) <= l + 1) std::this_thread::yield();
+    };
     LoadStats st;
     st.layers = (uint64_t) lay.n_layers;
     const auto t0 = std::chrono::steady_clock::now();
@@ -2660,6 +2688,7 @@ LoadStats load_experts_gguf(const std::string& gguf, uint8_t* dst, const strata:
             for (;;) {
                 const int64_t l = next.fetch_add(1);
                 if (l >= lay.n_layers || bad) break;
+                wait_ready(l);
                 const auto& fm = lay.fmt[(size_t) l];
                 const uint64_t blob = lay.bytes[(size_t) l];
                 const uint64_t per[3] = {fm.up_off, fm.up_off, blob - fm.down_off};
@@ -2738,6 +2767,7 @@ LoadStats load_experts_gguf(const std::string& gguf, uint8_t* dst, const strata:
         for (;;) {
             const int64_t l = next.fetch_add(1);
             if (l >= lay.n_layers || bad) break;
+            wait_ready(l);
             const auto& fm = lay.fmt[(size_t) l];
             const uint64_t blob = lay.bytes[(size_t) l];
             const uint64_t per[3] = {fm.up_off, fm.up_off, blob - fm.down_off};

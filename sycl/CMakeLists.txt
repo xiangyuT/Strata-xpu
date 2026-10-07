@@ -133,7 +133,7 @@ if(STRATA_NATIVE_EXPERTS)
 endif()
 
 # --- the GPU engine ------------------------------------------------------------------------------------------------
-strata_resolve(_core src/core/device.cu src/core/pinned.cu src/platform/memory.cpp src/core/graph.cpp
+strata_resolve(_core src/core/device.cu src/core/pinned.cu src/core/vmm.cpp src/platform/memory.cpp src/core/graph.cpp
                      src/core/weights.cpp src/core/layout.cpp)
 add_library(strata_core STATIC ${_core})
 target_link_libraries(strata_core PUBLIC strata_includes)
@@ -178,6 +178,9 @@ target_link_libraries(strata PRIVATE strata_engine strata_prefill strata_spec)
 option(STRATA_SYCL_PARITY "Build the kernel parity tests" ON)
 if(STRATA_SYCL_PARITY)
   enable_testing()
+  add_executable(gemm_stride_parity src/prefill/gemm_stride_parity.cpp)
+  target_link_libraries(gemm_stride_parity PRIVATE strata_prefill)
+  add_test(NAME gemm_stride_parity COMMAND gemm_stride_parity)
   foreach(p IN ITEMS dequant_s2 s2_gemv iq shared_expert gr gdn s2_gemv_q8 sampler rope quantize_act router_top10
                      s_gemv elementwise bf16_gemv s_gemv_q8k qsa ple kv_q8 kv_stream kv_q4 cvec)
     strata_resolve(_src src/kernels/${p}_parity.cpp)

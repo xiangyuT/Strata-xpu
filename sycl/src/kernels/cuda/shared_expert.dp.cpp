@@ -230,13 +230,15 @@ __dpct_inline__ void scale_rows_kernel(float *__restrict__ out,
 
 void shared_expert_multi(int n_tok, const float* x, const uint16_t* x_bf16, const NativeSharedWeights& nw,
                          const uint16_t* gate_inp_bf16, float* gate, float* up, float* g, float* out, int64_t n_embd,
-                         int64_t n_ff, void* stream) {
+                         int64_t n_ff, void* stream, const void* x_q8_1_ready, int lfuse) {
+    if (lfuse != 0) throw std::invalid_argument("SYCL shared_expert_multi: fused gate variants are not implemented");
     if (n_tok < 1 || n_tok > 8 || !nw.q8_1 || !nw.gate_data || !nw.up_data || !nw.down_data || !stream)
         throw std::invalid_argument("shared_expert_multi: needs 1..8 tokens, native weights, scratch and a stream");
     dpct::queue_ptr cs = strata::q_of(stream);
-    native_quantize_q8_1(x, nw.q8_1, (int) n_embd, n_tok, stream);
-    native_mmvq(nw.gate_type, nw.gate_data, nw.q8_1, gate, (int) n_embd, (int) n_ff, n_tok, stream);
-    native_mmvq(nw.up_type, nw.up_data, nw.q8_1, up, (int) n_embd, (int) n_ff, n_tok, stream);
+    if (x_q8_1_ready == nullptr) native_quantize_q8_1(x, nw.q8_1, (int) n_embd, n_tok, stream);
+    const void* q8 = x_q8_1_ready != nullptr ? x_q8_1_ready : nw.q8_1;
+    native_mmvq(nw.gate_type, nw.gate_data, q8, gate, (int) n_embd, (int) n_ff, n_tok, stream);
+    native_mmvq(nw.up_type, nw.up_data, q8, up, (int) n_embd, (int) n_ff, n_tok, stream);
     const int n = (int) (n_ff * n_tok);
     {
         auto exp_props = sycl::ext::oneapi::experimental::properties{

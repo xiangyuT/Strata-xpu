@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 
 namespace strata::prefill {
 namespace {
@@ -1501,7 +1502,8 @@ void gr_norm(const float* R, const float* w_norm, float eps, float* xn, uint16_t
     check("gr_norm");
 }
 void gr_norm_rs(const float* R, const float* w_norm, float eps, float* rs, uint16_t* xn16, int64_t T, void* stream,
-                uint16_t* xn16_lo) {
+                uint16_t* xn16_lo, int64_t ldx) {
+    if (ldx != 0 && ldx != D) throw std::invalid_argument("SYCL gr_norm_rs: padded output is not implemented");
     {
         auto exp_props = sycl::ext::oneapi::experimental::properties{
             sycl::ext::oneapi::experimental::use_root_sync};
@@ -1538,7 +1540,8 @@ void gr_mix_r(const float* R, const float* rs, const float* w_norm, const float*
     check("gr_mix_r");
 }
 void gr_write_norm_rs(float* R, const float* bo, const float* inj, int64_t inj_ld, const float* w_norm_next, float eps,
-                      float* rs, uint16_t* xn16, int64_t T, void* stream, uint16_t* xn16_lo) {
+                      float* rs, uint16_t* xn16, int64_t T, void* stream, uint16_t* xn16_lo, int64_t ldx) {
+    if (ldx != 0 && ldx != D) throw std::invalid_argument("SYCL gr_write_norm_rs: padded output is not implemented");
     {
         auto exp_props = sycl::ext::oneapi::experimental::properties{
             sycl::ext::oneapi::experimental::use_root_sync};
@@ -1709,7 +1712,8 @@ void gdn_conv(float* history, const float* qkv, const float* conv_w, float* h, i
     check("gdn_conv");
 }
 void gdn_recurrence(float* state, const float* h, const float* gate, const float* beta, const float* z,
-                    const float* gamma, float eps, float* y, uint16_t* y16, int64_t T, void* stream) {
+                    const float* gamma, float eps, float* y, uint16_t* y16, int64_t T, void* stream, int64_t ld16) {
+    if (ld16 != 0 && ld16 != HV * S) throw std::invalid_argument("SYCL gdn_recurrence: padded output is not implemented");
     static const bool serial = std::getenv("STRATA_GDN_REC_HEADS") != nullptr;   // the one-block-per-head kernel (A/B)
     if (serial || T <= 0) {
         /*
@@ -2062,7 +2066,8 @@ void split_q(const float* q_full, float* q, int64_t T, void* stream) {
     }
     check("split_q");
 }
-void gate_attn(const float* attn, const float* q_full, uint16_t* out16, int64_t T, void* stream) {
+void gate_attn(const float* attn, const float* q_full, uint16_t* out16, int64_t T, void* stream, int64_t ld16) {
+    if (ld16 != 0 && ld16 != 6144) throw std::invalid_argument("SYCL gate_attn: padded output is not implemented");
     {
         auto exp_props = sycl::ext::oneapi::experimental::properties{
             sycl::ext::oneapi::experimental::use_root_sync};

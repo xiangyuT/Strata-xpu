@@ -13,6 +13,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 
 #ifndef STRATA_PLAN_LOCAL
 #define STRATA_PLAN_LOCAL 1   // 0: the original one-thread plan kernel (A/B)
@@ -802,7 +803,8 @@ void dense_steps(const int32_t* cells, int n, int32_t* steps, void* stream) {
 }
 
 void gdn_conv_l2_multi(const float* history, const float* qkv, const float* conv_w, float* h, int channels,
-                       int qk_heads, float eps, int n_tok, void* stream, int t_begin) {
+                       int qk_heads, float eps, int n_tok, void* stream, int t_begin, bool commit) {
+    if (commit) throw std::invalid_argument("SYCL gdn_conv_l2_multi: fused history commit is not implemented");
     if (!history || !qkv || !conv_w || !h || channels % S != 0 || n_tok < 1 || n_tok > kVerifyMaxT) {
         std::fprintf(stderr, "gdn_conv_l2_multi: invalid arguments\n");
         std::exit(1);
@@ -876,7 +878,8 @@ void gdn_ab_multi(const float* x, const uint16_t* w_alpha, const uint16_t* w_bet
 
 void gdn_step_norm_multi(float* state, const float* h, int conv_channels, const float* gate, const float* beta,
                          const float* z, const float* gamma, float eps, float* y, int h_k, int h_v, int n_tok,
-                         const int32_t* n_keep, void* stream, int t_out_begin) {
+                         const int32_t* n_keep, void* stream, int t_out_begin, void* xq_out) {
+    if (xq_out != nullptr) throw std::invalid_argument("SYCL gdn_step_norm_multi: fused q8_1 output is not implemented");
     if (!state || !h || !gate || !beta || !z || !gamma || !y || h_k <= 0 || h_v % h_k || n_tok < 1 ||
         n_tok > kVerifyMaxT) {
         std::fprintf(stderr, "gdn_step_norm_multi: invalid arguments\n");
@@ -1120,7 +1123,8 @@ void resident_plan_set_mirror(const int32_t* d_res, const unsigned long long* mi
 }
 void resident_plan(const int32_t* ids, int n_entries, int k, const int32_t* res_layer, int n_expert,
                    const uint8_t* cache_base, const unsigned long long* slot_off, long long blob, int32_t* plan,
-                   long long capx, uint32_t* skip, uint32_t ring, void* stream) {
+                   long long capx, uint32_t* skip, uint32_t ring, void* stream, uint32_t* plan_err) {
+    if (plan_err != nullptr) throw std::invalid_argument("SYCL resident_plan: the optional plan error flag is not implemented");
     const unsigned long long* mir = nullptr;   // SYCL port: the layer's slice of the host-mirror table, if any
     if (g_mirror_table != nullptr && g_mirror_res != nullptr && res_layer >= g_mirror_res)
         mir = g_mirror_table + (res_layer - g_mirror_res);
