@@ -10,6 +10,7 @@
 #include "strata/sycl_math.hpp"
 #include "strata/sycl_queue.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/iq_dequant.hpp"
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 
@@ -2448,9 +2449,92 @@ void iq_dequant_f32(int t, const void* src, int64_t n, float* dst, void* stream)
     check("iq_dequant_f32");
 }
 
+namespace {
+template <int Subgroups, int Type = 0, int PerRow = 0>
+void launch_dequant_gu_tiled(int type, const void* gate, const void* up,
+                             int64_t n_ff, int64_t n_embd, uint16_t* dst,
+                             void* stream) {
+    const int64_t per_row = PerRow ? PerRow : n_embd / 256;
+    const int64_t blocks = n_ff * per_row;
+    const size_t groups = (size_t) ((blocks + Subgroups - 1) / Subgroups);
+    auto* queue = strata::q_of(stream);
+    const auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    queue->parallel_for<dpct_kernel_name<class dequant_gu_tiled_kernel,
+                                        dpct_kernel_scalar<Subgroups>,
+                                        dpct_kernel_scalar<Type>,
+                                        dpct_kernel_scalar<PerRow>>>(
+        sycl::nd_range<3>(sycl::range<3>(1, 2, groups * Subgroups * 32),
+                          sycl::range<3>(1, 1, Subgroups * 32)),
+        properties,
+        [=](sycl::nd_item<3> item) [[sycl::reqd_sub_group_size(32)]] {
+            const auto sg = item.get_sub_group();
+            const int64_t block = item.get_group(2) * Subgroups + sg.get_group_linear_id();
+            if (block >= blocks) return;
+            const int parity = item.get_group(1);
+            const int64_t row = block / per_row, col = block % per_row;
+            dq_dispatch<sycl::half>(Type ? Type : type, parity ? up : gate, block,
+                reinterpret_cast<sycl::half*>(dst) +
+                    ((2 * row + parity) * per_row + col) * QK_K,
+                sg.get_local_linear_id());
+        });
+}
+template <int Subgroups>
+void dispatch_dequant_gu_tiled(int type, const void* gate, const void* up,
+                              int64_t n_ff, int64_t n_embd, uint16_t* dst,
+                              void* stream, bool static_type, bool static_row) {
+    if (static_row && n_embd == 2560) {
+        switch (type) {
+            case 16: launch_dequant_gu_tiled<Subgroups, 16, 10>(type, gate, up, n_ff, n_embd, dst, stream); return;
+            case 22: launch_dequant_gu_tiled<Subgroups, 22, 10>(type, gate, up, n_ff, n_embd, dst, stream); return;
+            case 29: launch_dequant_gu_tiled<Subgroups, 29, 10>(type, gate, up, n_ff, n_embd, dst, stream); return;
+        }
+    }
+    if (static_type) {
+        switch (type) {
+            case 16: launch_dequant_gu_tiled<Subgroups, 16>(type, gate, up, n_ff, n_embd, dst, stream); return;
+            case 22: launch_dequant_gu_tiled<Subgroups, 22>(type, gate, up, n_ff, n_embd, dst, stream); return;
+            case 29: launch_dequant_gu_tiled<Subgroups, 29>(type, gate, up, n_ff, n_embd, dst, stream); return;
+        }
+    }
+    launch_dequant_gu_tiled<Subgroups>(type, gate, up, n_ff, n_embd, dst, stream);
+}
+int dequant_gu_subgroups() {
+    static const int value = [] {
+        const char* text = std::getenv("STRATA_SYCL_DEQUANT_GU_SG");
+        const int requested = text ? std::atoi(text) : 1;
+        return requested == 2 || requested == 4 || requested == 8 ? requested : 1;
+    }();
+    return value;
+}
+}
+
+void iq_dequant_gu_f16_tiled(int type, const void* gate, const void* up,
+                           int64_t n_ff, int64_t n_embd, uint16_t* dst,
+                           void* stream, int subgroups, bool static_type, bool static_row) {
+    if (n_ff <= 0 || n_embd <= 0 || n_embd % 256 != 0 || !is_iq(type)) {
+        std::fprintf(stderr, "iq_dequant_gu_f16_tiled: invalid type or shape\n");
+        std::exit(1);
+    }
+    dpct::has_capability_or_fail(strata::q_of(stream)->get_device(), {sycl::aspect::fp16});
+    switch (subgroups) {
+        case 2: dispatch_dequant_gu_tiled<2>(type, gate, up, n_ff, n_embd, dst, stream, static_type, static_row); break;
+        case 4: dispatch_dequant_gu_tiled<4>(type, gate, up, n_ff, n_embd, dst, stream, static_type, static_row); break;
+        case 8: dispatch_dequant_gu_tiled<8>(type, gate, up, n_ff, n_embd, dst, stream, static_type, static_row); break;
+        default: std::fprintf(stderr, "iq_dequant_gu_f16_tiled: subgroups must be 2, 4 or 8\n"); std::exit(1);
+    }
+    check("iq_dequant_gu_f16_tiled");
+}
+
 void iq_dequant_gu_f16(int t, const void* gate, const void* up, int64_t n_ff, int64_t n_embd, uint16_t* dst, void* stream) {
     // checked like the other entry points: an unknown type used to leave `dst` unwritten, a wrong prompt and no error
     if (n_embd % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_gu_f16: type %d / %lld\n", t, (long long) n_embd); std::exit(1); }
+    if (dequant_gu_subgroups() != 1) {
+        static const bool static_type = env_on("STRATA_SYCL_DEQUANT_GU_STATIC_TYPE");
+        static const bool static_row = env_on("STRATA_SYCL_DEQUANT_GU_STATIC_ROW");
+        iq_dequant_gu_f16_tiled(t, gate, up, n_ff, n_embd, dst, stream, dequant_gu_subgroups(), static_type, static_row);
+        return;
+    }
     const int64_t per_row = n_embd / 256;
     {
 

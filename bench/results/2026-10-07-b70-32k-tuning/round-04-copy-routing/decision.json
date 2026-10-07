@@ -1,0 +1,13 @@
+{
+  "decision": "retained target-local development option",
+  "primary": "TTFT -9.211% on matched3-sample B/C/B",
+  "total": "-8.357%",
+  "correctness": "byte-exact ring/guard/marker protocol and exact real-model response equality to both baselines",
+  "TPOT": "-0.283% observed; small3-sample result, no broader decode claim",
+  "baseline_drift_ttft_pct": 0.01036949308679258,
+  "binary_sha256": "bfe419763ad8a94b4f0d81740127d9ace98c2570504716d7738e6f08d6a2879d",
+  "selected_env": "STRATA_SYCL_PREFILL_COPY_PROFILING=0",
+  "default": "legacy profiling-enabled transfer queue remains default; no version change",
+  "causal_limit": "Changed event profiling property; physical copy offload not measured or inferred from ordinal labels",
+  "next_profile": "21-vtune-cpu-copy-no-timestamps"
+}

@@ -4,6 +4,7 @@
 #include <dpct/dpct.hpp>
 #include "strata/sycl_queue.hpp"
 #include "strata/prefill/gemm.hpp"
+#include "strata/workload_trace.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #include <dpct/blas_utils.hpp>
 
@@ -443,6 +444,7 @@ void Gemm::bf16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64
     if (T <= 0 || N <= 0) return;
     if (ldy <= 0) ldy = N;
     if (ldx <= 0) ldx = K;
+    workload_trace::Scope trace("gemm.bf16_to_f32", stream_, T, N, K, ldx, ldy);
     const float alpha = 1.0f;
 #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
     if (try_hipblaslt(hipblaslt_state_, strata::prefill::hipblaslt::InputType::bf16, X, W, Y, T, N, K, ldy,
@@ -467,6 +469,7 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
                float beta) {
     if (T <= 0 || N <= 0) return;
     if (ldy <= 0) ldy = N;
+    workload_trace::Scope trace("gemm.f16_to_f32", stream_, T, N, K, K, ldy);
     const float alpha = 1.0f;
 #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
     if (try_hipblaslt(hipblaslt_state_, strata::prefill::hipblaslt::InputType::f16, X, W, Y, T, N, K, ldy,
@@ -492,6 +495,7 @@ void Gemm::native(const uint16_t* X, int ggml_type, const void* W_blocks, float*
     if (ldy <= 0) ldy = N;
     if (ldx <= 0) ldx = K;
     auto multiply = [&](int64_t n, float* out) {
+        workload_trace::Scope trace("gemm.native_f16_to_f32", stream_, T, n, K, ldx, ldy, ggml_type);
         const float alpha = 1.0f;
         ck(DPCT_CHECK_ERROR(dpct::blas::gemm(
                (dpct::blas::descriptor_ptr)handle_, oneapi::mkl::transpose::trans,

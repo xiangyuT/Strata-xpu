@@ -1,0 +1,44 @@
+{
+  "question": "Does using the known 2560-wide embedding row remove expensive runtime 64-bit division/modulo in each dequant work-item?",
+  "evidence_class": "development_performance_comparison",
+  "baseline_binary_sha256": "8f185193623e3182f2a6e38aeddb1cc0e79a108029285ee6c6e822bf1242be21",
+  "micro_comparator_sha256": "008a617079ee694b2a0010e0043469157e7e8bdad942264602ff325bf806b312",
+  "actual_contract": {
+    "types": [
+      16,
+      22,
+      29
+    ],
+    "n_ff": 640,
+    "n_embd": 2560,
+    "per_row": 10,
+    "FP16_interleaved_output": true,
+    "subgroups": 8,
+    "lanes": 32
+  },
+  "removable_cost": "Runtime integer divide/modulo for row/column; PerRow=10 in specialization, same flattened block scheduling and FP formulas. Typed dispatch retained to avoid one dynamic kernel carrying all unrelated formats; isolate width in micro.",
+  "fallback": "Only n_embd=2560 and actual formats use fixed-row kernel; all other types/shapes retain matched generic/typed SG path.",
+  "correctness": "all formats, widths 256/768/2560 and row tails 1/3/7, real model layers 0/1/8, guard bytes; whole-request text equality against accepted SG8 required",
+  "micro": "typed dynamic-width vs typed fixed-width, >=1000calls +2s warm and >=2000calls +3s timed, rotating outputs, real expert-0 inputs hot",
+  "performance_plan": {
+    "warmups_per_block": 3,
+    "samples_per_block": 3,
+    "order": [
+      "accepted_sg8_before",
+      "typed_fixed_row",
+      "accepted_sg8_after"
+    ],
+    "prompt_tokens": 32768,
+    "generated_tokens": 256,
+    "seed_schedule": [
+      42,
+      42,
+      42
+    ],
+    "request_files": "frozen campaign requests",
+    "same_cache_budget": 17772,
+    "profiled_samples_excluded": true
+  },
+  "completion": "Retain only after matched no-profiler B/C/B and correctness; reprofile retained candidate. No general/default-platform or formal-acceptance claim.",
+  "status": "planned; no performance claim"
+}

@@ -1,0 +1,44 @@
+{
+  "evidence_class": "resident_workload_profile",
+  "instrumentation": "software CPU sampling; native GPU event behavior retained",
+  "raw_results": "result/",
+  "prompt_ms": 31898.4,
+  "text_matches_unprofiled": true,
+  "top_driver_functions": [
+    {
+      "Function": "func@0x378f10",
+      "CPU Time": "26.548859",
+      "CPU Time:Effective Time": "26.088852",
+      "CPU Time:Spin Time": "0.460007",
+      "CPU Time:Overhead Time": "0.0",
+      "Module": "libze_intel_gpu.so.1",
+      "Function (Full)": "func@0x378f10",
+      "Source File": "[Unknown]",
+      "Start Address": "0x378f10"
+    },
+    {
+      "Function": "func@0x3666f0",
+      "CPU Time": "3.390425",
+      "CPU Time:Effective Time": "2.420305",
+      "CPU Time:Spin Time": "0.970120",
+      "CPU Time:Overhead Time": "0.0",
+      "Module": "libze_intel_gpu.so.1",
+      "Function (Full)": "func@0x3666f0",
+      "Source File": "[Unknown]",
+      "Start Address": "0x3666f0"
+    },
+    {
+      "Function": "func@0x1fa790",
+      "CPU Time": "0.200032",
+      "CPU Time:Effective Time": "0.140020",
+      "CPU Time:Spin Time": "0.060012",
+      "CPU Time:Overhead Time": "0.0",
+      "Module": "libze_intel_gpu.so.1",
+      "Function (Full)": "func@0x1fa790",
+      "Source File": "[Unknown]",
+      "Start Address": "0x1fa790"
+    }
+  ],
+  "interpretation": "Driver wait/dispatch functions remain dominant in CPU samples; hidden symbols prevent uniquely naming the leaf operation. CPU times can overlap GPU activity. No CPU-bound or hardware-routing claim.",
+  "comparison_limit": "Initial04 CPU profile predates GU optimizations; not a controlled per-round CPU-time speedup comparison."
+}

@@ -1,0 +1,41 @@
+{
+  "question": "Does removing unused event profiling from the prefill transfer queue improve fresh 32K TTFT while preserving dependencies and output?",
+  "evidence_class": "development_performance_comparison",
+  "baseline_binary_sha256": "9cc403528b5fc04e8bb4db6a37d285b37d560cf56684843edce2046542faabe8",
+  "exact_source_attribution": [
+    "sycl/include/dpct/device.hpp create_queue_impl adds enable_profiling under DPCT_PROFILING_ENABLED",
+    "sycl/src/prefill/prefill.cpp transfer queue m.copy; copied/used events coordinate 8 staging slots",
+    "Prefill phase timing queries compute/peer queues only; no transfer event timestamps used"
+  ],
+  "trace_limits": "Unitrace track is derived from the original L0 command-list ordinal. V2 driver can internally offload copies, so Compute Engine<0,0> label does not prove physical copy-engine absence. Hardware exposes ordinal1 copy-only group, fill pattern maximum1; no forced native queue or driver setting in this candidate.",
+  "removable_cost": "Unconsumed queue event timestamps and associated profiling barriers; no claimed roofline or physical routing change.",
+  "implementation": "Optional STRATA_SYCL_PREFILL_COPY_PROFILING=0 creates same-device/context in-order SYCL transfer queue without profiling, same DPCT async handler; owned lifetime; legacy queue remains default.",
+  "correctness": "Actual input sizes1510400/1305600/1177600; rotating8-slot cross-queue copy/consume/reuse and64-bit host sequence marker; no per-event host waits; real 32K responses must match baseline.",
+  "micro": "Queue protocol screening only, not an LLM throughput estimate. Warm>=1000 iterations+2s; timed>=2000+3s if stable and supported.",
+  "e2e": {
+    "warmups_per_block": 3,
+    "samples_per_block": 3,
+    "order": [
+      "baseline_before",
+      "candidate",
+      "baseline_after"
+    ],
+    "primary": "client_ttft_ms",
+    "secondary": [
+      "client_tpot_ms",
+      "engine_ipc_tpot_ms",
+      "elapsed_s",
+      "prompt_ms"
+    ],
+    "seed_schedule": [
+      42,
+      42,
+      42
+    ],
+    "requests": "unchanged frozen32768/256 bodies",
+    "profiler": false,
+    "same_cache_budget": 17772
+  },
+  "default_or_version_changes": "none",
+  "status": "planned; no performance claim"
+}

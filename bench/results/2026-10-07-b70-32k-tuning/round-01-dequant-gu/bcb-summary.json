@@ -1,0 +1,182 @@
+{
+  "evidence_class": "development_performance_comparison",
+  "arms": [
+    "05-bcb-baseline-before",
+    "06-bcb-candidate-sg8",
+    "07-bcb-baseline-after"
+  ],
+  "samples_per_block": 3,
+  "zero_prompt_reuse": true,
+  "actual_expert_cache_slots": 18609,
+  "same_engine_arguments_and_sampling": true,
+  "metrics": {
+    "prompt_ms": {
+      "baseline_before": [
+        36191.2,
+        36177.9,
+        36185.2
+      ],
+      "candidate": [
+        35237.4,
+        35223.2,
+        35226.9
+      ],
+      "baseline_after": [
+        36199.9,
+        36174.9,
+        36191.1
+      ],
+      "paired_baseline": [
+        36195.55,
+        36176.4,
+        36188.149999999994
+      ],
+      "paired_change_pct": [
+        -2.6471486135726696,
+        -2.6348669298216665,
+        -2.6562562606819995
+      ],
+      "paired_mean_change_pct": -2.6460906013587784,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.010685896367079728,
+      "baseline_paired_mean": 36186.7,
+      "candidate_mean": 35229.166666666664
+    },
+    "elapsed_s": {
+      "baseline_before": [
+        40.00591635401361,
+        39.90004731412046,
+        40.01075488305651
+      ],
+      "candidate": [
+        39.0538058639504,
+        38.9445080969017,
+        39.05253168288618
+      ],
+      "baseline_after": [
+        40.01484148297459,
+        39.898047923110425,
+        40.01736900396645
+      ],
+      "paired_baseline": [
+        40.0103789184941,
+        39.89904761861544,
+        40.01406194351148
+      ],
+      "paired_change_pct": [
+        -2.390812285213173,
+        -2.3923867327309,
+        -2.4029808870259295
+      ],
+      "paired_mean_change_pct": -2.3953933016566675,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.011291051843720368,
+      "baseline_paired_mean": 39.974496160207,
+      "candidate_mean": 39.01694854791276
+    },
+    "ttft_s": {
+      "baseline_before": [
+        36.26550340792164,
+        36.253450189949945,
+        36.25934943719767
+      ],
+      "candidate": [
+        35.31355334003456,
+        35.29694350599311,
+        35.30107293999754
+      ],
+      "baseline_after": [
+        36.273210478015244,
+        36.248515552142635,
+        36.26680166297592
+      ],
+      "paired_baseline": [
+        36.26935694296844,
+        36.25098287104629,
+        36.263075550086796
+      ],
+      "paired_change_pct": [
+        -2.635292388659749,
+        -2.6317613744348156,
+        -2.652843410263239
+      ],
+      "paired_mean_change_pct": -2.639965724452601,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.009399538124110762,
+      "baseline_paired_mean": 36.26113845470051,
+      "candidate_mean": 35.303856595341735
+    },
+    "decode_ms": {
+      "baseline_before": [
+        3766.0,
+        3672.3,
+        3776.9
+      ],
+      "candidate": [
+        3766.1,
+        3673.0,
+        3777.0
+      ],
+      "baseline_after": [
+        3767.2,
+        3675.2,
+        3776.2
+      ],
+      "paired_baseline": [
+        3766.6,
+        3673.75,
+        3776.55
+      ],
+      "paired_change_pct": [
+        -0.013274571231347565,
+        -0.020415107179316827,
+        0.011915637287995828
+      ],
+      "paired_mean_change_pct": -0.007258013707556188,
+      "wins": 2,
+      "baseline_before_after_drift_pct": 0.030315999714680686,
+      "baseline_paired_mean": 3738.9666666666667,
+      "candidate_mean": 3738.7
+    }
+  },
+  "outputs": [
+    {
+      "sample": 1,
+      "sha256_before_candidate_after": [
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8"
+      ],
+      "text_equal": true
+    },
+    {
+      "sample": 2,
+      "sha256_before_candidate_after": [
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6"
+      ],
+      "text_equal": true
+    },
+    {
+      "sample": 3,
+      "sha256_before_candidate_after": [
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f"
+      ],
+      "text_equal": true
+    }
+  ],
+  "all_outputs_equal": true,
+  "prefill_throughput_tok_s": {
+    "paired_baseline": 905.5260634431988,
+    "candidate": 930.1383796570077
+  },
+  "config_sha256": {
+    "05-bcb-baseline-before": "970ac5acc6b7daccacc46f9e9ab77d7587aafbf243e3c501ba3945187e16be40",
+    "06-bcb-candidate-sg8": "544cf88a2678975d0957c35472fc153019ba9b547d2ef48d8cf44bffc0b4c033",
+    "07-bcb-baseline-after": "42b466fcd715c4a41711e4f758cf95632ce43430c171e286d3258bfe981fbe4b"
+  },
+  "limitations": "Three samples per block; no profiler in comparisons. Not formal acceptance or general quality evidence."
+}

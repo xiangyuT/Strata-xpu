@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-07",
+  "status": "three optimization questions completed; strict latency and complete-request tracing added; next copy-queue hypothesis pending",
+  "source_revision": "35c54d714cae62115261acec4c8f34193df278e6 plus local dev overlay",
+  "branch": "dev/b70-iq2xs-sycl-20261007",
+  "normal_binary_sha256": "9cc403528b5fc04e8bb4db6a37d285b37d560cf56684843edce2046542faabe8",
+  "profile_binary_sha256": "1fcff5f003688a33f3c43ff98cd8ae7cd081f9fa04ae3fc1e0b7f96366d304da",
+  "current_unprofiled_latency": {
+    "evidence_class": "functional and unprofiled latency observation",
+    "source": "current overlay with workload trace compiled OFF",
+    "binary_sha256": "9cc403528b5fc04e8bb4db6a37d285b37d560cf56684843edce2046542faabe8",
+    "output_equals_previous_samples": [
+      true,
+      true,
+      true
+    ],
+    "warmups_excluded": 3,
+    "samples": 3,
+    "mean_client_ttft_ms": 35198.40900933681,
+    "mean_client_tpot_ms": 14.598674972365105,
+    "mean_engine_ipc_tpot_ms": 14.598578444444444,
+    "mean_engine_average_ms_per_token": 14.641666666666667,
+    "profile_flags_absent": true,
+    "current_optimization_env": {
+      "STRATA_SYCL_DEQUANT_GU_SG": "8",
+      "STRATA_SYCL_DEQUANT_GU_STATIC_TYPE": "1",
+      "STRATA_SYCL_DEQUANT_GU_STATIC_ROW": "1"
+    }
+  },
+  "complete_request_trace": "complete-request-trace.json",
+  "lighter_trace": "light-device-trace.json",
+  "raw_root": "/home/xiangyu/workspace/codex_output/strata-b70-32k-tuning-20261007-cGYODW",
+  "raw_capture_limits": "Heavy source/API profiling changes timing. Mapped-host reads are not explicit memcpy events; GPU hardware counters unavailable. Full request capture and exact GEMM correlation do not prove every hardware bottleneck.",
+  "optimization_status": "SG8 and typed fixed-row optional settings retained on target-local B/C/B. Legacy default preserved. No TPOT improvement claim.",
+  "remote_status": "No new commit or push in this campaign; prior compatibility revision preserved."
+}

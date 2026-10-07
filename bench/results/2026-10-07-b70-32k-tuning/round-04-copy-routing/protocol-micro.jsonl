@@ -1,0 +1,6 @@
+{"profiling":true,"bytes":1510400,"timed_calls":36608,"wall_us":82.213,"byte_exact":true,"guards":true,"markers":true}
+{"profiling":false,"bytes":1510400,"timed_calls":39936,"wall_us":75.4864,"byte_exact":true,"guards":true,"markers":true}
+{"profiling":true,"bytes":1305600,"timed_calls":40704,"wall_us":74.0284,"byte_exact":true,"guards":true,"markers":true}
+{"profiling":false,"bytes":1305600,"timed_calls":44800,"wall_us":67.2431,"byte_exact":true,"guards":true,"markers":true}
+{"profiling":true,"bytes":1177600,"timed_calls":43776,"wall_us":68.7804,"byte_exact":true,"guards":true,"markers":true}
+{"profiling":false,"bytes":1177600,"timed_calls":48384,"wall_us":62.0324,"byte_exact":true,"guards":true,"markers":true}

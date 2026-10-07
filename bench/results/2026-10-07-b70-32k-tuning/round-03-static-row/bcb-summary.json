@@ -1,0 +1,182 @@
+{
+  "evidence_class": "development_performance_comparison",
+  "arms": [
+    "10-bcb-sg8-before",
+    "11-bcb-static-row",
+    "12-bcb-sg8-after-retry-01"
+  ],
+  "samples_per_block": 3,
+  "zero_prompt_reuse": true,
+  "actual_expert_cache_slots": 18609,
+  "same_engine_arguments_and_sampling": true,
+  "metrics": {
+    "prompt_ms": {
+      "baseline_before": [
+        35234.5,
+        35214.2,
+        35240.3
+      ],
+      "candidate": [
+        35139.2,
+        35124.4,
+        35126.4
+      ],
+      "baseline_after": [
+        35261.0,
+        35233.7,
+        35248.3
+      ],
+      "paired_baseline": [
+        35247.75,
+        35223.95,
+        35244.3
+      ],
+      "paired_change_pct": [
+        -0.30796291961898703,
+        -0.28262020585424485,
+        -0.3345221780543306
+      ],
+      "paired_mean_change_pct": -0.3083684345091875,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.05109330204657869,
+      "baseline_paired_mean": 35238.666666666664,
+      "candidate_mean": 35130.0
+    },
+    "elapsed_s": {
+      "baseline_before": [
+        39.0497734840028,
+        38.937604242004454,
+        39.06571041303687
+      ],
+      "candidate": [
+        38.95330857206136,
+        38.8477194798179,
+        38.95078231301159
+      ],
+      "baseline_after": [
+        39.085772013058886,
+        38.963732151081786,
+        39.085687384940684
+      ],
+      "paired_baseline": [
+        39.06777274853084,
+        38.95066819654312,
+        39.075698898988776
+      ],
+      "paired_change_pct": [
+        -0.2929887434491296,
+        -0.2643053931854267,
+        -0.3196784433724398
+      ],
+      "paired_mean_change_pct": -0.29232419333566534,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.07014202815365245,
+      "baseline_paired_mean": 39.03137994802091,
+      "candidate_mean": 38.91727012163028
+    },
+    "ttft_s": {
+      "baseline_before": [
+        35.310226497007534,
+        35.2908448970411,
+        35.3154713481199
+      ],
+      "candidate": [
+        35.21393543109298,
+        35.199932309798896,
+        35.20064145303331
+      ],
+      "baseline_after": [
+        35.33546194713563,
+        35.30719898501411,
+        35.32534042489715
+      ],
+      "paired_baseline": [
+        35.32284422207158,
+        35.299021941027604,
+        35.320405886508524
+      ],
+      "paired_change_pct": [
+        -0.3083239568532514,
+        -0.2807149484035376,
+        -0.3390800033839847
+      ],
+      "paired_mean_change_pct": -0.30937296954692456,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.048584114951344404,
+      "baseline_paired_mean": 35.31409068320257,
+      "candidate_mean": 35.204836397975065
+    },
+    "decode_ms": {
+      "baseline_before": [
+        3764.9,
+        3672.2,
+        3775.5
+      ],
+      "candidate": [
+        3764.8,
+        3673.5,
+        3775.8
+      ],
+      "baseline_after": [
+        3775.9,
+        3682.1,
+        3785.6
+      ],
+      "paired_baseline": [
+        3770.4,
+        3677.1499999999996,
+        3780.55
+      ],
+      "paired_change_pct": [
+        -0.14852535539995326,
+        -0.09926165644588147,
+        -0.12564309425877607
+      ],
+      "paired_mean_change_pct": -0.12447670203487027,
+      "wins": 3,
+      "baseline_before_after_drift_pct": 0.276474680270411,
+      "baseline_paired_mean": 3742.7,
+      "candidate_mean": 3738.0333333333333
+    }
+  },
+  "outputs": [
+    {
+      "sample": 1,
+      "sha256_before_candidate_after": [
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8"
+      ],
+      "text_equal": true
+    },
+    {
+      "sample": 2,
+      "sha256_before_candidate_after": [
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6"
+      ],
+      "text_equal": true
+    },
+    {
+      "sample": 3,
+      "sha256_before_candidate_after": [
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f"
+      ],
+      "text_equal": true
+    }
+  ],
+  "all_outputs_equal": true,
+  "prefill_throughput_tok_s": {
+    "paired_baseline": 929.8876234439442,
+    "candidate": 932.7640193566752
+  },
+  "config_sha256": {
+    "10-bcb-sg8-before": "d965024c4414be64d1b78ffbedffdfdd8ec39cb57839117de77363cc38893077",
+    "11-bcb-static-row": "ca50a3919cd2bdfd2e4e6b9f81cc3cd0c625cd930971c1ed663161fbea29252c",
+    "12-bcb-sg8-after-retry-01": "309678efaea87bf0dfd8eb497665a92750d3ec7200e66733526b37a916813c5e"
+  },
+  "limitations": "Three samples per block; no profiler in comparisons. Not formal acceptance or general quality evidence."
+}

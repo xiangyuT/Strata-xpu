@@ -1,0 +1,36 @@
+{
+  "trace_arm": "09-unitrace-static-type",
+  "kernel_contract": "640x2560 FP16 interleaved gate/up, SG8x32, actual model formats from separate compile-time kernel identities",
+  "per_format": [
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_dequant_gu_tiled<8, 22>(int, void const*, void const*, long, long, unsigned short*, void*)::dequant_gu_tiled_kernel, dpct_kernel_scalar<8>, dpct_kernel_scalar<22> >[SIMD32 {800; 2; 1} {256; 1; 1}]",
+      "calls": 215791,
+      "device_ms": 3810.449511,
+      "share_pct": 11.506947,
+      "mean_ns": 17658,
+      "min_ns": 14375,
+      "max_ns": 65208
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_dequant_gu_tiled<8, 16>(int, void const*, void const*, long, long, unsigned short*, void*)::dequant_gu_tiled_kernel, dpct_kernel_scalar<8>, dpct_kernel_scalar<16> >[SIMD32 {800; 2; 1} {256; 1; 1}]",
+      "calls": 68393,
+      "device_ms": 1906.254718,
+      "share_pct": 5.756583,
+      "mean_ns": 27872,
+      "min_ns": 23125,
+      "max_ns": 70937
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_dequant_gu_tiled<8, 29>(int, void const*, void const*, long, long, unsigned short*, void*)::dequant_gu_tiled_kernel, dpct_kernel_scalar<8>, dpct_kernel_scalar<29> >[SIMD32 {800; 2; 1} {256; 1; 1}]",
+      "calls": 18029,
+      "device_ms": 632.26659,
+      "share_pct": 1.909344,
+      "mean_ns": 35069,
+      "min_ns": 30208,
+      "max_ns": 70208
+    }
+  ],
+  "total_gu_device_ms": 6348.970819,
+  "attribution_status": "exact format and shape from source and instantiated kernel names",
+  "limits": "Single profiled request; no standalone type-specialization E2E speedup. Profiling execution facts only."
+}

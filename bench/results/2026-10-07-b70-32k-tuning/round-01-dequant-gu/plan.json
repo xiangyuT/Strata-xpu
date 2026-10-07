@@ -1,0 +1,58 @@
+{
+  "question": "Does assigning several independent 256-value dequant blocks to each work-group reduce GU dequant execution time without changing quantization or output layout?",
+  "parent_binary_sha256": "8fbececa8b72cc758c9b5c9970bad761a51eb410317ed77ee89a3b59a69cd48c",
+  "kernel_contract": {
+    "function": "iq_dequant_gu_f16",
+    "types_from_model": [
+      16,
+      22,
+      29
+    ],
+    "n_ff": 640,
+    "n_embd": 2560,
+    "output": "FP16 interleaved gate/up rows",
+    "legacy_workgroup_threads": 32,
+    "candidate_subgroups": [
+      2,
+      4,
+      8
+    ],
+    "subgroup_lanes": 32
+  },
+  "attribution": {
+    "kernel": "dpct_kernel_name<strata::kernels::iq_dequant_gu_f16(int, void const*, void const*, long, long, unsigned short*, void*)::{lambda(sycl::_V1::handler&)#1}::operator()(sycl::_V1::handler&) const::dequant_gu_kernel_2397ca>[SIMD32 {6400; 2; 1} {32; 1; 1}]",
+    "calls": 302213,
+    "device_ms": 7347.255956,
+    "share_pct": 21.532036
+  },
+  "removable_cost": "work-group scheduling and block geometry; preserves independent per-block quantization formulas, root-sync launch property, and output byte layout",
+  "correctness": "all supported formats, boundary/tail shapes, guarded output buffers, plus real model layers 0/1/8; byte exact",
+  "micro": "2-second/1000-call warmup, 3-second/2000-call minimum timed window, rotating outputs; use for screening, full E2E decides",
+  "development_bcb": {
+    "warmups_per_block": 3,
+    "samples_per_block": 3,
+    "order": [
+      "baseline_before",
+      "candidate",
+      "baseline_after"
+    ],
+    "request_labels": [
+      "tokens-32768-run-1",
+      "tokens-32768-run-2",
+      "tokens-32768-run-3"
+    ],
+    "seeds": [
+      42,
+      42,
+      42
+    ],
+    "primary_metric": "prefill_ms",
+    "secondary_metrics": [
+      "client_elapsed_s",
+      "decode_ms",
+      "TTFT"
+    ],
+    "no_profiler_in_performance_blocks": true
+  },
+  "status": "implementation built; correctness pending; no performance claim"
+}

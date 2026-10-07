@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-07",
+  "installed_compiler": "2026.1.1.20260724",
+  "matched_driver_source": {
+    "repository": "intel/compute-runtime",
+    "tag": "26.31.39395.13",
+    "revision": "a9808c808165cf0d4ee0789a484e95eb15a9cad2"
+  },
+  "upstream_ur_reference": {
+    "repository": "intel/llvm",
+    "revision": "0daa114427043a94b8e70a0c0fd4ee1db5cad54e",
+    "matching_vendor_build_claim": false
+  },
+  "actual_queue_groups": "queue_groups.txt",
+  "findings": [
+    "B70 exposes compute/copy ordinal0 and copy-only ordinal1; copy-only maximum fill pattern1 byte.",
+    "Unitrace engine_ordinal is copied from the original command-list descriptor; label does not expose internal driver copy offload.",
+    "V2 requests offload as a hint; driver can ignore per operation. No forced-offload/driver flag is introduced in this experiment.",
+    "DPCT queue helper adds enable_profiling under a compilation macro; current transfer queue inherits it.",
+    "Transfer copied/used events are dependency signals; prefill timers query compute/peer events, not transfer events."
+  ],
+  "decision": "Test suppression of unused transfer-queue profiling. Avoid selecting a forced native BCS queue from the ambiguous track labels.",
+  "source_links": [
+    "https://github.com/intel/llvm/blob/0daa114427043a94b8e70a0c0fd4ee1db5cad54e/unified-runtime/source/adapters/level_zero/v2/command_list_cache.cpp",
+    "https://github.com/intel/compute-runtime/blob/a9808c808165cf0d4ee0789a484e95eb15a9cad2/level_zero/core/source/cmdlist/cmdlist_hw.inl"
+  ],
+  "limits": "Neither track labels nor instrumented overlaps prove physical engine utilization or an unprofiled bottleneck."
+}

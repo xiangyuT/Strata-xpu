@@ -151,6 +151,9 @@ engine's stderr. Results from real cards are what move this from experimental to
 
 ## Fork build check (2026-10-07)
 
+> Update 2026-10-07: this section retains the first 8K experiment. The later
+> [aligned workload and GPU-count results](#aligned-workloads-and-gpu-count-2026-10-07) follow below.
+
 Built with oneAPI DPC++ 2026.1.1 and oneMKL in `intel/omix:0.4.0-devel-ubuntu24.04`, AOT `bmg-g31`, and run on one
 Arc Pro B70 (`0xE223`), Linux kernel 6.17.0-1007-intel, compute runtime 26.31.39395.13. The port's version label is
 still `0.1.39-sycl`; no project version was changed.
@@ -186,3 +189,203 @@ Prompts, responses, timings, settings, hashes and limitations:
 comparison; larger contexts, vision, multi-GPU, and a complete quality evaluation were not run. The inherited CUDA
 header/runtime startup warning is misleading for this SYCL build. GPU monitor readings from the Intel wrapper
 were not used, because its sysfs reader currently selects the first Intel card.
+
+
+## Aligned workloads and GPU count (2026-10-07)
+
+Measured with the same SYCL binary as the first experiment, SHA-256
+`8fbececa8b72cc758c9b5c9970bad761a51eb410317ed77ee89a3b59a69cd48c`,
+from fork commit `35c54d714cae62115261acec4c8f34193df278e6`. All inference ran in an omix container.
+The prepared multi-card runtime is a filesystem snapshot of that container, with no dependency reinstall or
+project version change. Existing host weights were mounted read-only for this phase.
+
+The measured request bodies at 4,096 and 32,768 tokens match the six request SHA-256 hashes in the
+[RTX 5090 community report](../bench/results/2026-09-30-community-rtx-5090/README.md).
+The GGUF revision, packed dense weights, native-expert metadata, tokenizer, expert profile and MTP runtime
+also match that report's artifact hashes. The public harness was adapted only to add an excluded warmup at
+each length and reject streamed errors. Its measured request generator and payload fields were preserved.
+
+Primary settings: context 131,072; INT8 KV with 32,768 resident cells; `--spec 4 --spec-min-p 0.5`;
+temperature 0; thinking off; server-default seed 42; 256 generated tokens; one request at a time.
+Every count uses `--prefill auto --no-prefill-borrow` (effective 2,048-token chunks),
+`--pcie-frac 0.30 --vram-reserve-mib 1536 --adapt-every 1000000 --prompt-cache 0`.
+The CPU quota is 16, the container RAM limit 96 GiB. Source build and parity checks were reused because
+the binary did not change; the new device configurations were checked through real inference.
+
+One B70: `cc:00.0`. Two B70s: `18:00.0` and `cc:00.0`, split at layer 24.
+Four B70s: `18:00.0`, `36:00.0`, `54:00.0`, `cc:00.0`, split at layers 12, 24 and 36.
+Two and four cards passed the arithmetic and Chinese smoke checks. Their startup logs confirm all 24,576
+experts resident across the stages; the unused host mirror is disabled there (`STRATA_MIRROR_MIB=0`).
+The single-card baseline retains a 16,384 MiB mirror cap. This is layer splitting, not tensor parallelism.
+
+Each cell is the median of three measured requests. Loading, short warmup and per-length warmups are excluded.
+All 18 primary requests had zero reused prompt tokens, generated 256 tokens and reached the output limit.
+
+| B70 count | Prompt tokens | Prompt tok/s | Decode tok/s | TTFT seconds | Total seconds |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 4,096 | 772.4 | 67.4 | 5.337 | 9.112 |
+| 2 | 4,096 | 762.1 | 71.6 | 5.408 | 8.959 |
+| 4 | 4,096 | 654.1 | 68.3 | 6.296 | 10.029 |
+| 1 | 32,768 | 820.0 | 66.9 | 40.036 | 43.847 |
+| 2 | 32,768 | 831.6 | 69.3 | 39.476 | 43.021 |
+| 4 | 32,768 | 663.6 | 67.1 | 49.449 | 53.126 |
+
+Two cards increased median decode throughput by 6.3% at 4K and 3.5% at 32K, while total latency fell only
+1.7% and 1.9%. Four cards did not improve decode materially and increased 32K total latency by about 21%.
+These are three-request observations, not a claim of stable scaling or general speed on other workloads.
+
+[results.json](../bench/results/2026-10-07-b70-iq2xs-aligned/results.json) retains all 36 measured requests,
+including the earlier automatic-probe baseline and two borrow-setting arms, with responses, counters,
+configuration, median/range summaries, request and artifact identities, and community references.
+The primary GPU-count table uses the later explicitly pinned single-card baseline in the same prepared
+runtime as the multi-card arms. The earlier automatic-probe prefill results differ by about 7%, so small
+improvements should not be treated as a stable speedup. The borrow records are exploratory.
+
+NVIDIA references use different engine revisions and host hardware, so they remain whole-system references.
+A configured 128K limit is not a measured 128K workload: only 4K and 32K inputs were tested here.
+Vision, concurrent requests, general answer quality and formal acceptance were not evaluated.
+
+
+## Single-card focus and community references (2026-10-07)
+
+**Follow-up, 2026-10-07:** the table in this section is the preserved aligned hardware reference.
+The fixed-cache 32K tuning campaign below has its own paired baseline and local component profiles.
+Do not derive code speedups by comparing its new timings with this historical table.
+
+The user's current priority is single-card B70 optimization. The completed two- and four-card results above
+remain recorded as capacity and scaling observations. The matching fixed-parameter `1gpu` arm is the current
+single-card reference; the earlier automatic-probe arm is retained separately.
+
+The closest community comparisons use original Flash-Next IQ2_XS, 4,096 / 32,768 prompt tokens, greedy decoding,
+reasoning off, 256 generated tokens, zero prefix reuse and medians of three runs. Values below are tok/s:
+
+| Single-card platform | 4K prompt / decode | 32K prompt / decode |
+|---|---:|---:|
+| This fork, B70 | 772.4 / 67.4 | 820.0 / 66.9 |
+| [RTX 5070 Ti, 0.1.39](https://github.com/obiscr/Strata/blob/36ddda197895b09895b5bcbb956813b35fce219b/bench/results/2026-10-06-community-rtx5070ti-5900x/README.md) | 1,992 / 102.0 | 2,817 / 101.3 |
+| [RTX 5090, 0.1.29](../bench/results/2026-09-30-community-rtx-5090/README.md) | 4,269.8 / 179.4 | 5,543.2 / 175.7 |
+
+The six request body hashes and shared model artifacts were checked against the 5090 report. That report also
+uses a 131,072-token context and 32,768 resident INT8 KV cells. The 5070 Ti report uses the same public harness,
+but a 65,536-token context. NVIDIA's prompt chunks, borrowing policy, CPU, PCIe link, engine revision and other
+startup choices differ, so these are whole-system references rather than a controlled comparison of GPU speed.
+The relative gap is larger for prefill than decode. This suggests investigating single-card prefill first,
+but no local profile has yet identified the component responsible.
+
+[The Intel port author's B70 record](INTEL.md) reports original IQ2_XS decode at 58.6 / 64.2 tok/s after
+19 / 2,184 input tokens. It is useful context for this fork's roughly 67 tok/s, but uses different prompts and
+port revisions. The often-cited B70 70-78 tok/s figures are Coder IQ1_M, so they are excluded from this IQ2_XS
+comparison. [single-card-reference.json](../bench/results/2026-10-07-b70-iq2xs-aligned/single-card-reference.json)
+records the user direction, measurement source digest, community sources, comparability classes and limits.
+
+
+## Single-card 32K kernel tuning (2026-10-07)
+
+The campaign uses the same recorded 32,768-input / 256-output requests, seed 42, greedy decoding,
+reasoning off, zero prompt reuse, 131,072 context and INT8 KV. Its requested expert-cache budget is
+fixed at 17,772; the variable-size native expert profile actually fits 18,609 slots (25.00 GiB).
+The earlier automatic-cache hardware-reference table remains separate. Loading, three 32K warmups
+per block and all profiled requests are excluded from performance comparisons.
+
+Round 1 groups eight independent 256-value GU dequant blocks into a 256-thread work-group.
+The quantization formulas, interleaved FP16 output and root-sync launch property are preserved.
+All 135 format/shape cases and three real expert-weight cases passed byte-exact comparison with
+guarded output buffers. In the development baseline/candidate/baseline comparison, three samples
+per block, mean prefill fell from 36.187 to 35.229 seconds (-2.65%) and mean total latency from
+39.974 to 39.017 seconds (-2.40%). All three paired samples improved; prefill baseline drift was
+0.011%, and generated text matched both baseline blocks exactly. Decode time was essentially unchanged.
+
+Reprofiling confirms the same 302,213 GU calls took 6.404 seconds of device execution rather than
+7.347 seconds. Other leading kernels remained near unchanged. These trace times explain the
+direction of the unprofiled comparison; they are not independent workflow speedup estimates.
+VTune software CPU sampling completed. GPU counters could not be collected because Metrics Discovery
+failed to initialize; no host package, driver or profiling-permission changes were made.
+
+This remains a target-local development experiment in an omix container, with host weights mounted
+read-only. The legacy route remains the default; round 1 is selected with
+`STRATA_SYCL_DEQUANT_GU_SG=8`. Later format and indexing experiments are still being evaluated.
+[iteration-01.json](../bench/results/2026-10-07-b70-32k-tuning/iteration-01.json) retains the exact
+identities, paired deltas, outputs, profiling limits and raw artifact pointer. Project versions are unchanged.
+
+**Latency follow-up, 2026-10-07:** earlier `decode_ms / generated_tokens` is the engine's average
+decode time, not a measured client token interval. A separate unprofiled observation of the typed/fixed-row
+candidate recorded both raw IPC token lines and client text-delta arrival times. Three full 32K requests
+had mean client TTFT 35.197 seconds, first-to-last-text TPOT 14.602 ms/token, IPC-arrival TPOT 14.602 ms/token,
+and engine average decode time 14.645 ms/token. Client TPOT uses 255 intervals for 256 engine-generated tokens;
+text chunking can coalesce the initial tokens. Each response had only 240-245 nonempty text deltas, so delta
+intervals are retained separately from the 256 raw-token arrivals. The IPC clock measures the frontend reader,
+not GPU compute or the engine producer. [latency-14.json](../bench/results/2026-10-07-b70-32k-tuning/latency-14.json)
+records the definitions and each sample. Historical records cannot recover a token-gap distribution.
+
+The third development comparison completed using a compatible retry for its after block; the first after
+attempt timed out during model startup and produced no measurements. Prefill fell 0.31% and TTFT 0.31%
+relative to SG8. No decode improvement is claimed, because the decode baseline drift exceeds its paired change.
+**Trace follow-up, 2026-10-07:** the complete request timeline is now captured, with source CPU scopes and
+GPU kernels/copies/submission flows on a shared monotonic-raw clock. All 617,912 GEMM executions in the
+measured request correlate to their actual source shape, stride and API input dtype, including 302,213
+gate/up and 302,213 down products. These are actual per-expert row counts, not dimensions inferred from
+generic kernel names. Loading and warmup records remain in the raw capture and are excluded by the request
+window. The profiled reply matches the unprofiled one.
+
+A second device-only capture removes full API logging and compiled CPU scopes. Both captures report all
+explicit copies on Compute Engine `<0,0>` and near-zero compute/copy overlap. This warrants inspecting copy
+queue routing, but instrumentation still roughly doubles prefill time; observed gaps are not an unprofiled
+utilization estimate. GPU reads from the mapped host mirror are not explicit memcpy events, and hardware
+bandwidth/occupancy counters remain unavailable. Thus the timeline resolves execution structure and GEMM
+attribution, while some hardware bottleneck attribution remains open.
+
+The optional CPU annotations use `-DSTRATA_SYCL_WORKLOAD_TRACE=ON` and
+`STRATA_WORKLOAD_TRACE_FILE`; normal builds default to OFF and add no GPU barrier or wait. The latest
+normal build passed three 32K requests with matching replies: mean client TTFT 35.198 seconds and TPOT
+14.599 ms/token. [current-summary.json](../bench/results/2026-10-07-b70-32k-tuning/current-summary.json)
+links the exact binary identities, measured definitions, full and lighter trace summaries, and raw data.
+No TPOT improvement is claimed. The next untested question is copy-queue backend routing.
+
+**Routing qualification, 2026-10-07:** Unitrace's engine name is derived from the original command-list
+queue group. Level Zero V2 can ask the driver to offload copies internally, so `<0,0>` does not prove
+that the physical copy engine is unused. The device exposes a separate copy-only group, but its maximum
+fill pattern is one byte; the stager's eight-byte sequence marker would need special handling there.
+The raw trace observations remain valid. No forced copy engine or driver setting was introduced.
+
+## Transfer event profiling experiment (2026-10-07)
+
+The migrated DPCT helper enables profiling for every queue created under `DPCT_PROFILING_ENABLED`.
+The prefill transfer queue inherits this property, although the phase timers query only compute/peer
+events. Round 4 adds an optional in-order transfer queue with the same device, context and async error
+handler, without profiling. Queue ownership is explicit; the legacy queue remains the default.
+
+The queue protocol test passed for all three actual expert blob sizes (1,510,400 / 1,305,600 / 1,177,600
+bytes), with eight rotating slots, cross-queue dependencies, full byte/guard checks and 64-bit host
+sequence markers. Its aggregate wall spans are protocol diagnostics, not pure copy or LLM throughput.
+
+The no-profiler development comparison uses three excluded 32K warmups and three measured requests in
+each baseline/candidate/baseline block. All measured responses match both baselines exactly; actual
+expert-cache capacity remains 18,609 in all blocks. Results below use paired baseline means:
+
+| Metric | Baseline | Candidate | Paired mean change |
+|---|---:|---:|---:|
+| Client TTFT | 35.212 s | 31.968 s | -9.21% |
+| Client first-to-last-text TPOT | 14.604 ms/token | 14.563 ms/token | -0.28% |
+| IPC token-arrival TPOT | 14.604 ms/token | 14.563 ms/token | -0.28% |
+| Total latency | 38.936 s | 35.682 s | -8.36% |
+
+All three paired TTFT samples improved; before/after TTFT drift was 0.010%. The TPOT change is small,
+so this is principally a prefill/TTFT improvement on this workload. These three-sample development
+results do not establish general decode speed or formal acceptance.
+
+Select the tested candidate with `STRATA_SYCL_PREFILL_COPY_PROFILING=0`, together with the retained
+GU settings `STRATA_SYCL_DEQUANT_GU_SG=8`, `STRATA_SYCL_DEQUANT_GU_STATIC_TYPE=1` and
+`STRATA_SYCL_DEQUANT_GU_STATIC_ROW=1`. Use a normal build (`STRATA_SYCL_WORKLOAD_TRACE=OFF`).
+The candidate binary SHA-256 is `bfe419763ad8a94b4f0d81740127d9ace98c2570504716d7738e6f08d6a2879d`.
+Weights, requests, sampling, project versions and legacy default behavior are unchanged.
+[latency-bcb-summary.json](../bench/results/2026-10-07-b70-32k-tuning/round-04-copy-routing/latency-bcb-summary.json)
+retains per-pair deltas, drift, token clocks and response hashes. The earlier current-summary snapshot is
+preserved as `current-summary-before-round04.json`; this section supersedes its pending copy-queue status.
+
+VTune software CPU sampling of the retained candidate completed after three excluded 32K warmups.
+The measured reply remains identical and prefill took 31.898 seconds. Driver functions still dominate
+CPU samples, with hidden symbols preventing unique leaf attribution; their time can overlap GPU work.
+This is a separate profile, not another performance sample or proof of a CPU-bound kernel.
+The result folder includes the captured request bodies and timestamp/correlation drivers. The drivers
+use the same container mounts (`/src/Strata`, read-only `/models/Strata`, writable `/artifacts`) and
+per-arm configuration files. Failed profile/startup attempts remain preserved in the raw artifact root.

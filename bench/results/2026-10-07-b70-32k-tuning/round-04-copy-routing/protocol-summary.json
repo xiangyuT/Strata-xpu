@@ -1,0 +1,62 @@
+{
+  "correctness": "byte exact, guarded buffers and64-bit host marker for all3 sizes, both queue modes; same-context/device/in-order property asserted",
+  "results": [
+    {
+      "profiling": true,
+      "bytes": 1510400,
+      "timed_calls": 36608,
+      "wall_us": 82.213,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    },
+    {
+      "profiling": false,
+      "bytes": 1510400,
+      "timed_calls": 39936,
+      "wall_us": 75.4864,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    },
+    {
+      "profiling": true,
+      "bytes": 1305600,
+      "timed_calls": 40704,
+      "wall_us": 74.0284,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    },
+    {
+      "profiling": false,
+      "bytes": 1305600,
+      "timed_calls": 44800,
+      "wall_us": 67.2431,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    },
+    {
+      "profiling": true,
+      "bytes": 1177600,
+      "timed_calls": 43776,
+      "wall_us": 68.7804,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    },
+    {
+      "profiling": false,
+      "bytes": 1177600,
+      "timed_calls": 48384,
+      "wall_us": 62.0324,
+      "byte_exact": true,
+      "guards": true,
+      "markers": true
+    }
+  ],
+  "timing_evidence": "protocol screening diagnostic only; aggregate wall spans include guard fill and synthetic byte checker, not kernel or LLM execution time; within-window drift not retained",
+  "performance_promotion": "requires matched real32K B/C/B, not inferred from these spans",
+  "physical_copy_engine": "not inferred from Unitrace command-list label; no forced engine or driver setting introduced"
+}

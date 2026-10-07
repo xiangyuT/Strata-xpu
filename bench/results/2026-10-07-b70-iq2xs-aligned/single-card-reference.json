@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-07",
+  "user_direction": "Record completed experiments; current optimization priority remains single-card Intel B70.",
+  "scope": "Record and compare existing measurements; no new device experiment in this turn.",
+  "measurement_source": {
+    "path": "results.json",
+    "sha256": "3a6021bd1bb493ecc1ba8dbe1229225f1d5da5cdb98868181e151ad6df0f57ee",
+    "code_revision": "35c54d714cae62115261acec4c8f34193df278e6"
+  },
+  "primary_baseline_arm": "1gpu",
+  "primary_workloads": {
+    "inputs": [
+      4096,
+      32768
+    ],
+    "output_tokens": 256,
+    "samples": 3,
+    "temperature": 0,
+    "seed": 42,
+    "reasoning": "none",
+    "cached_tokens": 0
+  },
+  "community_comparison": [
+    {
+      "platform": "Intel Arc Pro B70",
+      "origin": "local measured final fixed-parameter baseline",
+      "prompt_tokens": 4096,
+      "prefill_tok_s_median": 772.3784201693348,
+      "decode_tok_s_median": 67.3843805111737,
+      "ttft_s_median": 5.337052644928917,
+      "total_s_median": 9.11155387503095,
+      "samples": 3,
+      "output_tokens": 256,
+      "comparison_class": "current single-card baseline"
+    },
+    {
+      "platform": "NVIDIA RTX 5090",
+      "prompt_tokens": 4096,
+      "prefill_tok_s_median": 4269.780047951632,
+      "decode_tok_s_median": 179.37219730941703,
+      "ttft_s_median": 0.9743533680002656,
+      "total_s_median": 2.391696067000339,
+      "samples": 3,
+      "output_tokens": 256,
+      "source": "https://github.com/Niko1221/Strata/blob/main/bench/results/2026-09-30-community-rtx-5090/README.md",
+      "engine_version": "0.1.29",
+      "context_limit": 131072,
+      "comparison_class": "same captured request bodies and verified model/draft/profile/tokenizer hashes; different backend, source and host"
+    },
+    {
+      "platform": "NVIDIA RTX 5070 Ti",
+      "prompt_tokens": 4096,
+      "prefill_tok_s_median": 1992,
+      "decode_tok_s_median": 102.0,
+      "samples": 3,
+      "output_tokens": 256,
+      "source": "https://github.com/obiscr/Strata/blob/36ddda197895b09895b5bcbb956813b35fce219b/bench/results/2026-10-06-community-rtx5070ti-5900x/README.md",
+      "engine_version": "0.1.39",
+      "context_limit": 65536,
+      "comparison_class": "same original quantization and public harness; different backend, source, host and context limit"
+    },
+    {
+      "platform": "Intel Arc Pro B70",
+      "origin": "local measured final fixed-parameter baseline",
+      "prompt_tokens": 32768,
+      "prefill_tok_s_median": 819.9646170053576,
+      "decode_tok_s_median": 66.93335425000653,
+      "ttft_s_median": 40.03644387796521,
+      "total_s_median": 43.84711266099475,
+      "samples": 3,
+      "output_tokens": 256,
+      "comparison_class": "current single-card baseline"
+    },
+    {
+      "platform": "NVIDIA RTX 5090",
+      "prompt_tokens": 32768,
+      "prefill_tok_s_median": 5543.187738945089,
+      "decode_tok_s_median": 175.69144190515408,
+      "ttft_s_median": 5.950024114999906,
+      "total_s_median": 7.389697677000186,
+      "samples": 3,
+      "output_tokens": 256,
+      "source": "https://github.com/Niko1221/Strata/blob/main/bench/results/2026-09-30-community-rtx-5090/README.md",
+      "engine_version": "0.1.29",
+      "context_limit": 131072,
+      "comparison_class": "same captured request bodies and verified model/draft/profile/tokenizer hashes; different backend, source and host"
+    },
+    {
+      "platform": "NVIDIA RTX 5070 Ti",
+      "prompt_tokens": 32768,
+      "prefill_tok_s_median": 2817,
+      "decode_tok_s_median": 101.3,
+      "samples": 3,
+      "output_tokens": 256,
+      "source": "https://github.com/obiscr/Strata/blob/36ddda197895b09895b5bcbb956813b35fce219b/bench/results/2026-10-06-community-rtx5070ti-5900x/README.md",
+      "engine_version": "0.1.39",
+      "context_limit": 65536,
+      "comparison_class": "same original quantization and public harness; different backend, source, host and context limit"
+    }
+  ],
+  "intel_context_reference": {
+    "source": "https://github.com/Niko1221/Strata/blob/main/docs/INTEL.md",
+    "model": "original Flash-Next IQ2_XS",
+    "prompt_tokens": [
+      19,
+      2184
+    ],
+    "decode_tok_s": [
+      58.6,
+      64.2
+    ],
+    "comparison_class": "same GPU family and quantization, different prompts and port revision; contextual reference only",
+    "excluded_from_iq2_comparison": "The cited B70 70-78 tok/s results are Coder IQ1_M."
+  },
+  "inference_for_followup": "Cross-platform references show a larger relative prefill throughput gap than decode. Investigating the single-card prefill path is a reasonable direction; no local component bottleneck has been attributed by a profile.",
+  "limitations": [
+    "Community results are whole-system references, not a controlled GPU comparison.",
+    "Our no-prefill-borrow keeps 2048-token chunks; the 5090 report uses 8192-token chunks with borrowing.",
+    "Host CPU, CPU quotas, PCIe transfers, source versions, seed defaults, warmup schedules and vision reserves differ.",
+    "Historical automatic-probe and multi-card results remain preserved in results.json."
+  ]
+}

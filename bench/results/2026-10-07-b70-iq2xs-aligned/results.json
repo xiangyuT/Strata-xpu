@@ -1,0 +1,3322 @@
+{
+  "plan": {
+    "evidence_class": "development: aligned cross-platform workload reference and same-machine borrow-setting comparison; not formal acceptance",
+    "date": "2026-10-07",
+    "source": {
+      "repository": "xiangyuT/Strata",
+      "branch": "dev/b70-iq2xs-sycl-20261007",
+      "revision": "35c54d714cae62115261acec4c8f34193df278e6",
+      "base_revision": "82f46a8c8f475f001ad76d92f58f4a4f8ffb0253"
+    },
+    "build_reuse": {
+      "engine_sha256": "8fbececa8b72cc758c9b5c9970bad761a51eb410317ed77ee89a3b59a69cd48c",
+      "image_id": "sha256:53f0003fa66044935d69065836ba8ac40fab289b94655667fdeac0bdfa7e75c6",
+      "container_id": "ed3fbca43ee9eb879d6155a38e8ea6acf244ad3910afcc0409fdb6cc9a4911aa",
+      "decisions": {
+        "model_download": "reuse verified GGUF and MTP; no download",
+        "build": "reuse unchanged validated binary",
+        "kernel_parity": "reuse unchanged binary checks from first experiment",
+        "measurements": "execute: workload, context and KV residency changed",
+        "summary": "regenerate from new per-request data"
+      }
+    },
+    "gpu": {
+      "model": "Intel Arc Pro B70",
+      "device_id": "0xE223",
+      "pci": "0000:cc:00.0",
+      "render_node": "/dev/dri/renderD131",
+      "single_gpu": true
+    },
+    "model_receipt": {
+      "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+      "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+      "files": [
+        {
+          "path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "bytes": 39225954592,
+          "sha256": "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7"
+        },
+        {
+          "path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "bytes": 28800138432,
+          "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
+        }
+      ],
+      "verified_unix": 1791351882.212116
+    },
+    "measurement": {
+      "harness_source": "bench/results/2026-09-30-community-rtx-5090/benchmark.py",
+      "source_sha256": "694df81b3d064ca609c73dc8606baf6cbb8a4837ea800933ee6f2eb80dc52d9a",
+      "measured_payloads": "same generator and request fields as community harness; server-side default seed is 42",
+      "adaptations": [
+        "excluded per-length warmup using trial-0 nonce",
+        "reject streamed error events"
+      ],
+      "targets": [
+        4096,
+        32768
+      ],
+      "generated_cap": 256,
+      "context_limit": 131072,
+      "kv": "int8",
+      "kv_resident": 32768,
+      "spec": 4,
+      "spec_min_p": 0.5,
+      "thinking": "none",
+      "temperature": 0,
+      "seed_schedule": [
+        42,
+        42,
+        42
+      ],
+      "samples_per_length_per_arm": 3,
+      "arm_order": [
+        "no-borrow",
+        "borrow",
+        "borrow-fixed-pcie"
+      ],
+      "warmup": "short warmup plus one warmup per prompt length, all excluded",
+      "prompt_reuse": "zero reused tokens required",
+      "loading_time": "excluded",
+      "expert_cache": "profile-prefilled at startup, retained during each arm; adaptation interval 1000000",
+      "vram_reserve_mib": 1536,
+      "host_mirror_cap_mib": 16384,
+      "comparison_change": "effective settings: borrowing enabled versus disabled; candidate explicitly pins baseline effective pcie_frac 0.30",
+      "summaries": "median, minimum, maximum; per-request pairs retained",
+      "primary_comparison": {
+        "baseline": "no-borrow",
+        "candidate": "borrow-fixed-pcie",
+        "effective_pcie_frac": 0.3
+      },
+      "auxiliary_arm": "borrow: automatic pcie_frac 0.31; do not attribute small differences solely to borrowing"
+    },
+    "output_directory": "/home/xiangyu/workspace/codex_output/strata-b70-iq2xs-aligned-20261007-iQSz1h",
+    "container_output_directory": "/opt/strata-aligned-20261007",
+    "scope": {
+      "installation_build_and_inference_in_omix": true,
+      "no_host_inference_tests": true,
+      "remote_writes": false,
+      "version_changes": false,
+      "later_phase_not_run": [
+        "128000-token input",
+        "vision",
+        "multi-GPU",
+        "full quality evaluation"
+      ]
+    },
+    "revision_note": "Before the follow-up arm: automatic probes selected 0.30 for no-borrow and 0.31 for borrow; fix candidate to effective baseline 0.30 for the setting comparison. Preserve both completed automatic-probe arms."
+  },
+  "outcomes": {
+    "no-borrow": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    },
+    "borrow": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    },
+    "borrow-fixed-pcie": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    },
+    "2gpu": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    },
+    "4gpu": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    },
+    "1gpu": {
+      "status": "passed",
+      "measured_requests": 6,
+      "zero_reused": true,
+      "all_generated_256": true,
+      "thinking_off": true,
+      "actual_inputs": [
+        4096,
+        32768
+      ]
+    }
+  },
+  "arms": {
+    "no-borrow": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--no-prefill-borrow",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:gpu",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "16384"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/no-borrow/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": 0,
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "de33fd66836d18c6eb32fa9dc7f8934cd67678f66ca0c5b7d95a489de191e03d",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 4.955693785101175,
+            "min": 4.955593351041898,
+            "max": 4.9564354529138654
+          },
+          "client_elapsed_s": {
+            "median": 8.718205307144672,
+            "min": 8.652470188913867,
+            "max": 8.996400019153953
+          },
+          "prefill_tok_s": {
+            "median": 832.182039821211,
+            "min": 832.0806078088815,
+            "max": 832.3849780523492
+          },
+          "decode_tok_s": {
+            "median": 67.58719011537345,
+            "min": 62.95959273013453,
+            "max": 68.80055900454191
+          },
+          "draft_acceptance_pct": {
+            "median": 71.42857142857143,
+            "min": 64.78260869565217,
+            "max": 72.6027397260274
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 37.400363421067595,
+            "min": 37.38378845597617,
+            "max": 37.40078908693977
+          },
+          "client_elapsed_s": {
+            "median": 41.186446766136214,
+            "min": 41.0803433789406,
+            "max": 41.19159085908905
+          },
+          "prefill_tok_s": {
+            "median": 877.882023886707,
+            "min": 877.8443947942284,
+            "max": 878.19729422611
+          },
+          "decode_tok_s": {
+            "median": 67.16339594920768,
+            "min": 67.08771194213685,
+            "max": 68.77468232007092
+          },
+          "draft_acceptance_pct": {
+            "median": 77.11442786069652,
+            "min": 76.47058823529412,
+            "max": 78.32512315270937
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 4.955693785101175,
+          "client_elapsed_s": 8.718205307144672,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791354902.2726285,
+            "duration_s": 8.7,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 4922.0,
+            "decode_ms": 3787.7,
+            "decode_tok_s": 67.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 219,
+            "drafts_accepted": 159
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit implementation and algorithmic abstraction. Below is a detailed discussion of the code\u2019s structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function follows the general form:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\nwhere `MOD = 100003`.\n\nFor most functions, the multiplier and addend are derived from the function index `i`:\n- `multiplier = i + 1`\n- `addend = i`\n\nThus, for `task_00000`, `multiplier = 1`, `addend = 0`.\nFor `task_00001`, `multiplier = 2`, `"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 4.9564354529138654,
+          "client_elapsed_s": 8.652470188913867,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791354911.565797,
+            "duration_s": 8.6,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 4922.6,
+            "decode_ms": 3720.9,
+            "decode_tok_s": 68.8,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 217,
+            "drafts_accepted": 155
+          },
+          "text": "# Analysis of the Synthetic Python Module\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Deterministic Integer Transforms and Modular Arithmetic\n\nAt the core of every function in this module is a linear transformation followed by a modulo operation. The general form of each function is:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\n\nWhere `MOD` is the constant `100003`. This structure defines a **deterministic integer transform**. For any given input `value`, the output is always the same, assuming no side effects or external state changes. This determinism is crucial for testing, caching, and reproducibility.\n\n### The Role of Modulo Arithmetic\nThe modulo operation (`% 100003`)"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 4.955593351041898,
+          "client_elapsed_s": 8.996400019153953,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791354920.8357384,
+            "duration_s": 9.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 4920.8,
+            "decode_ms": 4066.1,
+            "decode_tok_s": 63.0,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 230,
+            "drafts_accepted": 149
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, labeled `task_00000` through `task_00112`, that perform deterministic integer transformations. Each function takes an integer input `value` and returns an integer result based on a specific linear formula involving multiplication, addition, and modulo arithmetic. This analysis explores the mathematical structure, computational complexity, testing implications, naming conventions, and maintainability of this synthetic code.\n\n## Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential generator (LCG) step or a simple affine transformation modulo a prime number. The general form of each function is:\n\n$$ f_i(value) = (value \\cdot a_i + b_i) \\pmod{100003} $$\n\nwhere $a_i$ is the multiplier and $b_i$ is the additive constant for task $i$. For most tasks, the multiplier $a_i$ follows the pattern $a_i = i + 1$, and the additive constant $b_i$ follows the pattern $b_i = i$. For example, `task_00000` uses"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 37.400363421067595,
+          "client_elapsed_s": 41.186446766136214,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791354973.178955,
+            "duration_s": 41.1,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37326.2,
+            "decode_ms": 3811.6,
+            "decode_tok_s": 67.2,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 201,
+            "drafts_accepted": 155
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + A_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $A_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements a **deterministic linear congruential generator (LCG)** step, albeit in a static, hard-coded manner. In computer science, LCGs are often used for pseudo-random number generation, but here they are used as deterministic hash-like transforms or state transitions.\n\n**Modulo Arithmetic:**"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 37.38378845597617,
+          "client_elapsed_s": 41.0803433789406,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355015.4791899,
+            "duration_s": 41.0,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37312.8,
+            "decode_ms": 3722.3,
+            "decode_tok_s": 68.8,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 203,
+            "drafts_accepted": 159
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + C_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $C_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements **deterministic integer transforms**. In computer science, a deterministic function is one that, given the same input, will always produce the same output. This is crucial for reproducibility in testing, caching, and distributed systems.\n\nThe use of the modulo operator (`%`) restricts the output range to"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 37.40078908693977,
+          "client_elapsed_s": 41.19159085908905,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355057.6766381,
+            "duration_s": 41.1,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37327.8,
+            "decode_ms": 3815.9,
+            "decode_tok_s": 67.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 204,
+            "drafts_accepted": 156
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Overview and Pattern Analysis\n\nThe provided code consists of a series of functions, `task_00000` through `task_00888`, that all perform a specific mathematical operation on an integer input. While the code appears verbose and repetitive, it follows a strict, deterministic pattern.\n\nThe general structure of each function is:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + offset) % 100003\n```\n\nTo understand the logic, we must analyze how `multiplier` and `offset` are derived from the function name (the index `i`).\n\n#### The Multiplier Pattern\nThe multiplier follows a cyclic pattern based on the index `i`:\n- **Initial Phase (i < 97):** The multiplier is `i + 1`.\n  - `task_00000`: multiplier = 1\n  - `task_00001`: multiplier = 2\n  - ...\n  - `task_00096`: multiplier = 97\n- **Reset"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": null,
+      "startup": {
+        "expert_slots": 17577,
+        "expert_cache_GiB": 23.6,
+        "mirrored_experts": 6999,
+        "mirror_GiB": 9.42,
+        "probe_GB_s": 11.1,
+        "effective_pcie_frac": 0.3,
+        "prompt_path": "prompt path allocates its own buffers (too few cache slots to borrow)",
+        "stage_lines": []
+      }
+    },
+    "borrow": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:gpu",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "16384"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/borrow/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": 0,
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "ef03bc9397377fc4d9d7af159c7ee6f9d371ea7f6a69e5e586e11487229517b0",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 5.960525398142636,
+            "min": 5.863227003021166,
+            "max": 6.121889944886789
+          },
+          "client_elapsed_s": {
+            "median": 9.730272318935022,
+            "min": 9.402243355056271,
+            "max": 10.001508908113465
+          },
+          "prefill_tok_s": {
+            "median": 691.1796965964124,
+            "min": 672.7768470155384,
+            "max": 702.6813744831964
+          },
+          "decode_tok_s": {
+            "median": 70.45742279958166,
+            "min": 62.96423828028924,
+            "max": 71.83142063469793
+          },
+          "draft_acceptance_pct": {
+            "median": 72.52252252252252,
+            "min": 60.68376068376068,
+            "max": 76.05633802816901
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 38.1383282081224,
+            "min": 37.670180045068264,
+            "max": 38.607099783141166
+          },
+          "client_elapsed_s": {
+            "median": 42.11166198598221,
+            "min": 41.44282878492959,
+            "max": 42.253145487979054
+          },
+          "prefill_tok_s": {
+            "median": 860.770932169107,
+            "min": 850.3725310572305,
+            "max": 871.5264479339547
+          },
+          "decode_tok_s": {
+            "median": 67.40389678778304,
+            "min": 64.02080676219772,
+            "max": 69.72816909081004
+          },
+          "draft_acceptance_pct": {
+            "median": 74.05660377358491,
+            "min": 66.37931034482759,
+            "max": 77.29468599033817
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 6.121889944886789,
+          "client_elapsed_s": 9.730272318935022,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355120.8442478,
+            "duration_s": 9.7,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6088.2,
+            "decode_ms": 3633.4,
+            "decode_tok_s": 70.5,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 222,
+            "drafts_accepted": 161
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function in the module follows a consistent pattern:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % 100003\n```\n\nThis is a **linear congruential transformation** modulo a prime number, `100003`. The general form is:\n$$ f(x) = (a \\cdot x + b) \\pmod{m} $$\nwhere:\n- $a$ is the multiplier,\n- $b$ is the addend,\n- $m = 100003$ is the modulus"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 5.960525398142636,
+          "client_elapsed_s": 10.001508908113465,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355131.1634004,
+            "duration_s": 10.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5926.1,
+            "decode_ms": 4065.8,
+            "decode_tok_s": 63.0,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 234,
+            "drafts_accepted": 142
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function follows a strict pattern: `return (value * multiplier + offset) % MOD`. This is a linear congruential generator (LCG) step, a common primitive in pseudorandom number generation and hashing. The modulus `100003` is a prime number, which ensures that the arithmetic operates within a finite field, providing predictable wrap-around behavior for large inputs.\n\nThe key observation is the relationship between the function index `i` and the parameters `multiplier` and `offset`. For most functions, the multiplier is `i + 1` and the offset is `i`. However, there is a discontinuity at `task"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 5.863227003021166,
+          "client_elapsed_s": 9.402243355056271,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355141.7521088,
+            "duration_s": 9.4,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5829.1,
+            "decode_ms": 3563.9,
+            "decode_tok_s": 71.8,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 213,
+            "drafts_accepted": 162
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential transformation. The general form of the operation is:\n\n$$ f(x) = (a \\cdot x + b) \\pmod{M} $$\n\nWhere:\n- $x$ is the input integer (`value`).\n- $a$ is the multiplier coefficient.\n- $b$ is the additive constant.\n- $M$ is the modulus, fixed at `100003`.\n\nFor `task_00000`, the parameters are $a=1, b=0$. For `task_00001`, they are $a=2,"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 38.607099783141166,
+          "client_elapsed_s": 42.253145487979054,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355192.7303927,
+            "duration_s": 42.2,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 38533.7,
+            "decode_ms": 3671.4,
+            "decode_tok_s": 69.7,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 207,
+            "drafts_accepted": 160
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + A_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $A_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements **deterministic integer transforms**. In computer science, a deterministic transform is a function where the output is entirely predictable based on the input, with no randomness or side effects.\n\n**Modulo Arithmetic:**\nThe use of `% 100003` restricts the output to the range"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 38.1383282081224,
+          "client_elapsed_s": 42.11166198598221,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355236.0752144,
+            "duration_s": 42.1,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 38068.2,
+            "decode_ms": 3998.7,
+            "decode_tok_s": 64.0,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 232,
+            "drafts_accepted": 154
+          },
+          "text": "Based on the provided synthetic Python module, here is a detailed technical review and explanation.\n\n### Overview of the Module\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic within every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general pattern for any function `task_N` is:\n```python\ndef task_N(value: int) -> int:\n    return (value * multiplier + addend) % 100003\n```\n\n### Deterministic Integer Transforms and Modulo Arithmetic\n\nThe functions implement a **deterministic linear transform** over the integers. Specifically, they perform an affine transformation modulo a prime number.\n\n1.  **Affine Transformation**: The operation `value * multiplier + addend` is a linear function. In mathematics, this is often referred to as an affine map. Because the multiplier is non-zero, this transformation is bijective (one-to-one) over the field of integers modulo $M$ (where $M = 100003"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 37.670180045068264,
+          "client_elapsed_s": 41.44282878492959,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355279.2913713,
+            "duration_s": 41.4,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37598.4,
+            "decode_ms": 3798.0,
+            "decode_tok_s": 67.4,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 212,
+            "drafts_accepted": 157
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function follows a strict, repetitive structure:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * A + B) % 100003\n```\n\nThis structure represents a **deterministic integer transform**. The core logic is an affine transformation over a finite field (or ring) defined by the modulus `100003`.\n\n#### The Affine Transform\nMathematically, each function implements the formula:\n$$ f(x) = (ax + b) \\pmod m $$\nWhere:\n*   $x$ is the input `value`.\n*   $a$ is the multiplier (coefficient).\n*   $b$ is the additive constant.\n*   $m$ is the modulus, fixed at `100003`.\n\nIn this specific module, the parameters $a$ and $b$ change for each function. However"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": null,
+      "startup": {
+        "expert_slots": 18672,
+        "expert_cache_GiB": 25.08,
+        "mirrored_experts": 5904,
+        "mirror_GiB": 7.94,
+        "probe_GB_s": 11.1,
+        "effective_pcie_frac": 0.31,
+        "prompt_path": "prompt path borrows 2637 CUDA0 cache slots (3.56 GiB)",
+        "stage_lines": []
+      }
+    },
+    "borrow-fixed-pcie": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768",
+          "--pcie-frac",
+          "0.30"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:gpu",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "16384"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/borrow-fixed-pcie/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": 0,
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "3fa95537512fbed802f5e0004505804a81165a3e05c8926865273f560bca87fd",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 6.239002818940207,
+            "min": 6.087478377856314,
+            "max": 6.6877024478744715
+          },
+          "client_elapsed_s": {
+            "median": 10.267934774979949,
+            "min": 9.611655856948346,
+            "max": 10.27880653203465
+          },
+          "prefill_tok_s": {
+            "median": 660.1234508211253,
+            "min": 615.5880850040578,
+            "max": 676.678065784474
+          },
+          "decode_tok_s": {
+            "median": 70.79646017699115,
+            "min": 63.14906633118724,
+            "max": 72.12283420200028
+          },
+          "draft_acceptance_pct": {
+            "median": 72.52252252252252,
+            "min": 60.68376068376068,
+            "max": 76.05633802816901
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 37.9475942379795,
+            "min": 37.93604510300793,
+            "max": 38.63420773204416
+          },
+          "client_elapsed_s": {
+            "median": 41.70027549494989,
+            "min": 41.581585303880274,
+            "max": 42.59629540913738
+          },
+          "prefill_tok_s": {
+            "median": 865.1640004330044,
+            "min": 849.752864233516,
+            "max": 865.5319238855959
+          },
+          "decode_tok_s": {
+            "median": 67.5515212285933,
+            "min": 64.20223704669709,
+            "max": 69.96064713598601
+          },
+          "draft_acceptance_pct": {
+            "median": 74.05660377358491,
+            "min": 66.37931034482759,
+            "max": 77.29468599033817
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 6.6877024478744715,
+          "client_elapsed_s": 10.27880653203465,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355433.358159,
+            "duration_s": 10.3,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6653.8,
+            "decode_ms": 3616.0,
+            "decode_tok_s": 70.8,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 222,
+            "drafts_accepted": 161
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function in the module follows a consistent pattern:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % 100003\n```\n\nThis is a **linear congruential transformation** modulo a prime number, `100003`. The general form is:\n$$ f(x) = (a \\cdot x + b) \\pmod{m} $$\nwhere:\n- $a$ is the multiplier,\n- $b$ is the addend,\n- $m = 100003$ is the modulus"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 6.239002818940207,
+          "client_elapsed_s": 10.267934774979949,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355444.2183251,
+            "duration_s": 10.3,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6204.9,
+            "decode_ms": 4053.9,
+            "decode_tok_s": 63.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 234,
+            "drafts_accepted": 142
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function follows a strict pattern: `return (value * multiplier + offset) % MOD`. This is a linear congruential generator (LCG) step, a common primitive in pseudorandom number generation and hashing. The modulus `100003` is a prime number, which ensures that the arithmetic operates within a finite field, providing predictable wrap-around behavior for large inputs.\n\nThe key observation is the relationship between the function index `i` and the parameters `multiplier` and `offset`. For most functions, the multiplier is `i + 1` and the offset is `i`. However, there is a discontinuity at `task"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 6.087478377856314,
+          "client_elapsed_s": 9.611655856948346,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355455.0678782,
+            "duration_s": 9.6,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6053.1,
+            "decode_ms": 3549.5,
+            "decode_tok_s": 72.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 213,
+            "drafts_accepted": 162
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential transformation. The general form of the operation is:\n\n$$ f(x) = (a \\cdot x + b) \\pmod{M} $$\n\nWhere:\n- $x$ is the input integer (`value`).\n- $a$ is the multiplier coefficient.\n- $b$ is the additive constant.\n- $M$ is the modulus, fixed at `100003`.\n\nFor `task_00000`, the parameters are $a=1, b=0$. For `task_00001`, they are $a=2,"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 37.9475942379795,
+          "client_elapsed_s": 41.581585303880274,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355506.613356,
+            "duration_s": 41.5,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37874.9,
+            "decode_ms": 3659.2,
+            "decode_tok_s": 70.0,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 207,
+            "drafts_accepted": 160
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + A_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $A_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements **deterministic integer transforms**. In computer science, a deterministic transform is a function where the output is entirely predictable based on the input, with no randomness or side effects.\n\n**Modulo Arithmetic:**\nThe use of `% 100003` restricts the output to the range"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 38.63420773204416,
+          "client_elapsed_s": 42.59629540913738,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355549.2603366,
+            "duration_s": 42.6,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 38561.8,
+            "decode_ms": 3987.4,
+            "decode_tok_s": 64.2,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 232,
+            "drafts_accepted": 154
+          },
+          "text": "Based on the provided synthetic Python module, here is a detailed technical review and explanation.\n\n### Overview of the Module\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic within every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general pattern for any function `task_N` is:\n```python\ndef task_N(value: int) -> int:\n    return (value * multiplier + addend) % 100003\n```\n\n### Deterministic Integer Transforms and Modulo Arithmetic\n\nThe functions implement a **deterministic linear transform** over the integers. Specifically, they perform an affine transformation modulo a prime number.\n\n1.  **Affine Transformation**: The operation `value * multiplier + addend` is a linear function. In mathematics, this is often referred to as an affine map. Because the multiplier is non-zero, this transformation is bijective (one-to-one) over the field of integers modulo $M$ (where $M = 100003"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 37.93604510300793,
+          "client_elapsed_s": 41.70027549494989,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791355592.9548843,
+            "duration_s": 41.7,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 37858.8,
+            "decode_ms": 3789.7,
+            "decode_tok_s": 67.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 212,
+            "drafts_accepted": 157
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function follows a strict, repetitive structure:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * A + B) % 100003\n```\n\nThis structure represents a **deterministic integer transform**. The core logic is an affine transformation over a finite field (or ring) defined by the modulus `100003`.\n\n#### The Affine Transform\nMathematically, each function implements the formula:\n$$ f(x) = (ax + b) \\pmod m $$\nWhere:\n*   $x$ is the input `value`.\n*   $a$ is the multiplier (coefficient).\n*   $b$ is the additive constant.\n*   $m$ is the modulus, fixed at `100003`.\n\nIn this specific module, the parameters $a$ and $b$ change for each function. However"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": null,
+      "startup": {
+        "expert_slots": 18858,
+        "expert_cache_GiB": 25.33,
+        "mirrored_experts": 5718,
+        "mirror_GiB": 7.69,
+        "probe_GB_s": null,
+        "effective_pcie_frac": 0.3,
+        "prompt_path": "prompt path borrows 2631 CUDA0 cache slots (3.56 GiB)",
+        "stage_lines": []
+      }
+    },
+    "2gpu": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--no-prefill-borrow",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768",
+          "--pcie-frac",
+          "0.30",
+          "--layer-split",
+          "24",
+          "--split-device",
+          "3"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:gpu",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "0"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/2gpu/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": [
+          0,
+          3
+        ],
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "b682e5a94eb3a7ae9842e40835f70eddf5d1a52e80669a4698d640c5df612082",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 5.408047012984753,
+            "min": 5.351124295964837,
+            "max": 5.505157415987924
+          },
+          "client_elapsed_s": {
+            "median": 8.958547400077805,
+            "min": 8.861365315970033,
+            "max": 9.180227739969268
+          },
+          "prefill_tok_s": {
+            "median": 762.1032262866074,
+            "min": 748.6885156007239,
+            "max": 770.4026934000414
+          },
+          "decode_tok_s": {
+            "median": 71.59637543349368,
+            "min": 69.18357970975326,
+            "max": 72.40433294679978
+          },
+          "draft_acceptance_pct": {
+            "median": 71.29629629629629,
+            "min": 65.23605150214593,
+            "max": 72.27272727272727
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 39.475934150861576,
+            "min": 39.04406156903133,
+            "max": 40.26980732101947
+          },
+          "client_elapsed_s": {
+            "median": 43.020801338832825,
+            "min": 42.72187646199018,
+            "max": 43.940359944012016
+          },
+          "prefill_tok_s": {
+            "median": 831.6350226765713,
+            "min": 815.193324808566,
+            "max": 840.8454643664534
+          },
+          "decode_tok_s": {
+            "median": 69.26406926406926,
+            "min": 69.13126839674867,
+            "max": 71.69462570364354
+          },
+          "draft_acceptance_pct": {
+            "median": 75.46296296296296,
+            "min": 73.33333333333333,
+            "max": 75.60975609756098
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 5.351124295964837,
+          "client_elapsed_s": 8.861365315970033,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356121.4669602,
+            "duration_s": 8.9,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5316.7,
+            "decode_ms": 3535.7,
+            "decode_tok_s": 72.4,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 220,
+            "drafts_accepted": 159
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit implementation and algorithmic abstraction. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability concerns.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential generator (LCG) step or a simple affine transformation modulo a prime number. The general form of each function is:\n\n$$ f_n(x) = (x \\cdot a_n + b_n) \\pmod{M} $$\n\nWhere:\n- $M = 100003$ is a fixed modulus.\n- $a_n$ is the multiplier for function $n$.\n- $b_n$ is the additive constant for function $n$.\n\nFor most functions (e.g., `task_00000` to `task_00096"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 5.408047012984753,
+          "client_elapsed_s": 8.958547400077805,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356130.8945754,
+            "duration_s": 9.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5374.6,
+            "decode_ms": 3575.6,
+            "decode_tok_s": 71.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 216,
+            "drafts_accepted": 154
+          },
+          "text": "# Analysis of the Synthetic Python Module\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Deterministic Integer Transforms and Modular Arithmetic\n\nAt the core of every function in this module is a linear transformation followed by a modulo operation. The general form of each function is:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\n\nWhere `MOD` is consistently `100003`. This constant is a prime number, which is significant in number theory and cryptography. Using a prime modulus ensures that the ring of integers modulo `MOD` forms a field, meaning every non-zero element has a multiplicative inverse. This property is crucial if one were to attempt to reverse the transformation (i.e., solve for `value` given the output),"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 5.505157415987924,
+          "client_elapsed_s": 9.180227739969268,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356140.4433434,
+            "duration_s": 9.2,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5470.9,
+            "decode_ms": 3700.3,
+            "decode_tok_s": 69.2,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 233,
+            "drafts_accepted": 152
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, labeled `task_00000` through `task_00112`, that perform deterministic integer transformations. Each function takes an integer input `value` and returns an integer result based on a specific linear formula involving multiplication, addition, and modulo arithmetic. This analysis explores the mathematical structure, implementation details, testing implications, naming conventions, computational complexity, and maintainability of this code.\n\n## Mathematical Structure and Deterministic Transforms\n\nAt its core, each function implements a linear congruential generator (LCG) step or a simple affine transformation modulo a prime number. The general form of the transformation in each function is:\n\n$$ f_i(x) = (x \\cdot a_i + b_i) \\pmod{M} $$\n\nwhere:\n- $x$ is the input `value`.\n- $a_i$ is the multiplier for task $i$.\n- $b_i$ is the additive constant for task $i$.\n- $M = 100003$ is the modulus.\n\nFor most tasks (e.g., `task_00000` to"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 39.04406156903133,
+          "client_elapsed_s": 42.72187646199018,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356195.134074,
+            "duration_s": 42.7,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 38970.3,
+            "decode_ms": 3703.1,
+            "decode_tok_s": 69.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 210,
+            "drafts_accepted": 154
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Recognition\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function follows a strict, repetitive structure:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * A + B) % 100003\n```\n\nThis module is a synthetic representation of a **linear congruential generator (LCG)** or a set of **affine transformations** applied to an integer input. The core logic is consistent across all functions, but the parameters `A` (the multiplier) and `B` (the addend) change based on the function name.\n\n### 2. Mathematical Analysis: Deterministic Integer Transforms\n\nThe mathematical operation performed in every function is an **affine transformation** modulo a prime number.\n\n#### The Modulus: 100003\nThe constant `100003` is a prime number. In modular arithmetic, working with a prime modulus is significant because it ensures that the ring $\\mathbb{"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 39.475934150861576,
+          "client_elapsed_s": 43.020801338832825,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356238.952598,
+            "duration_s": 43.0,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 39401.9,
+            "decode_ms": 3570.7,
+            "decode_tok_s": 71.7,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 216,
+            "drafts_accepted": 163
+          },
+          "text": "Based on the provided synthetic Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Recognition\n\nThe module consists of a series of functions named `task_00000` through `task_00888` (and potentially beyond, as the code cuts off). Each function follows a strict, deterministic signature: `def task_XXXXX(value: int) -> int`.\n\nThe core logic within each function is a linear transformation followed by a modulo operation:\n$$ f(x) = (x \\cdot a + b) \\pmod{100003} $$\n\nWhere:\n*   $x$ is the input `value`.\n*   $a$ is the multiplier.\n*   $b$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Analysis of the Transformation Logic\n\n#### The Multiplier ($a$)\nThe multiplier $a$ follows a cyclic pattern. It starts at 1 and increments by 1 for each subsequent function until it reaches 97. After `task_00096` (where $a=97$), the multiplier resets"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 40.26980732101947,
+          "client_elapsed_s": 43.940359944012016,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356283.0590634,
+            "duration_s": 43.9,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 40196.6,
+            "decode_ms": 3696.0,
+            "decode_tok_s": 69.3,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 205,
+            "drafts_accepted": 155
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Overview and Pattern Analysis\n\nThe provided code consists of a series of functions, `task_00000` through `task_00888`, that all perform a specific mathematical transformation on an integer input. While the code appears verbose and repetitive, it follows a strict, deterministic pattern that can be generalized.\n\nThe core logic of every function is:\n$$f(value) = (value \\times multiplier + offset) \\pmod{100003}$$\n\nThe `multiplier` and `offset` change based on the function name (the task ID). Let's analyze the pattern:\n\n*   **Offset:** The offset is always equal to the task ID. For `task_00000`, offset is 0. For `task_00001`, offset is 1. For `task_00888`, offset is 888.\n*   **Multiplier:** The multiplier follows a cyclic pattern.\n    *   For `task_00000` to `task_00096`, the multiplier is `task_id +"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": [
+        {
+          "case": "arithmetic",
+          "passed": true
+        },
+        {
+          "case": "chinese",
+          "passed": true
+        }
+      ],
+      "startup": {
+        "expert_slots": 12288,
+        "expert_cache_GiB": 16.19,
+        "mirrored_experts": null,
+        "mirror_GiB": null,
+        "probe_GB_s": null,
+        "effective_pcie_frac": 0.3,
+        "prompt_path": "prompt path's streamed ring 96 slots",
+        "stage_lines": [
+          "strata generate: layer split: CUDA3 holds its weights; 28.75 GiB free (its session follows the split search)",
+          "strata generate: layer split: CUDA3 holds its weights, session [24, 48) and the head; 27.98 GiB free",
+          "strata generate: layer split: CUDA3 runs layers 24-47, expert cache 12288 slots (16.83 GiB), 12288 of its 12288 profiled pairs; slot 0 verified",
+          "strata generate: layer split: CUDA0 runs layers 0-23",
+          "strata serve: layer split: 100% of the experts resident, the prompt path's streamed ring 96 slots",
+          "strata serve: layer split: layers 0-23 (CUDA0), 24-47 (CUDA3), one hand-off per window"
+        ]
+      }
+    },
+    "4gpu": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--no-prefill-borrow",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768",
+          "--pcie-frac",
+          "0.30",
+          "--layer-split",
+          "12,24,36",
+          "--split-device",
+          "1,2,3"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:gpu",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "0"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/4gpu/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "4725804eeee47d121ecb33d680e6ff30b0bf52b39e4898de767ee90c3fd920e7",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 6.2961860310751945,
+            "min": 6.255692475941032,
+            "max": 6.444070815807208
+          },
+          "client_elapsed_s": {
+            "median": 10.02884425688535,
+            "min": 9.960718556074426,
+            "max": 10.16855868184939
+          },
+          "prefill_tok_s": {
+            "median": 654.1250119773866,
+            "min": 639.1012638477142,
+            "max": 658.4573835321352
+          },
+          "decode_tok_s": {
+            "median": 68.2539259338257,
+            "min": 68.11046666311925,
+            "max": 68.6106346483705
+          },
+          "draft_acceptance_pct": {
+            "median": 68.30357142857143,
+            "min": 67.68558951965065,
+            "max": 69.81981981981981
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 49.449356438126415,
+            "min": 49.215162032982334,
+            "max": 49.49703585985117
+          },
+          "client_elapsed_s": {
+            "median": 53.126344048185274,
+            "min": 53.00241428310983,
+            "max": 53.437956786947325
+          },
+          "prefill_tok_s": {
+            "median": 663.6341910945671,
+            "min": 662.9963924482187,
+            "max": 666.8131832352486
+          },
+          "decode_tok_s": {
+            "median": 67.1193728533599,
+            "min": 64.51775498374455,
+            "max": 69.1182029267239
+          },
+          "draft_acceptance_pct": {
+            "median": 75.74257425742574,
+            "min": 67.24890829694323,
+            "max": 75.96153846153847
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 6.255692475941032,
+          "client_elapsed_s": 9.960718556074426,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356364.3679187,
+            "duration_s": 10.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6220.6,
+            "decode_ms": 3731.2,
+            "decode_tok_s": 68.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 222,
+            "drafts_accepted": 155
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit implementation and algorithmic abstraction. Below is a detailed discussion of the code\u2019s structure, mathematical properties, testing implications, and maintainability concerns.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function in the module follows a consistent pattern:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % 100003\n```\nThis is a **linear congruential transformation** modulo a prime number, `100003`. The transformation can be expressed as:\n$$ f(x) = (a \\cdot x + b) \\pmod{p} $$\nwhere $p = 100003$, $a$ is the multiplier, and $b$ is the addend.\n\n### Key Observations:\n- **Determinism"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 6.444070815807208,
+          "client_elapsed_s": 10.16855868184939,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356374.8960223,
+            "duration_s": 10.2,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6409.0,
+            "decode_ms": 3750.7,
+            "decode_tok_s": 68.3,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 224,
+            "drafts_accepted": 153
+          },
+          "text": "# Analysis of the Synthetic Python Module\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Deterministic Integer Transforms and Modular Arithmetic\n\nAt the core of every function in this module is a linear transformation followed by a modulo operation. The general form of each function is:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\n\nWhere `MOD` is consistently `100003`. This constant is a prime number, which is significant in number theory and cryptography. Using a prime modulus ensures that the ring of integers modulo `MOD` forms a field, meaning every non-zero element has a multiplicative inverse. This property is crucial if one were to attempt to reverse the transformation (i.e., solve for `value` given the output),"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 6.2961860310751945,
+          "client_elapsed_s": 10.02884425688535,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356385.62926,
+            "duration_s": 10.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 6261.8,
+            "decode_ms": 3758.6,
+            "decode_tok_s": 68.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 229,
+            "drafts_accepted": 155
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential generator (LCG) step or a simple affine transformation modulo a prime number. The general form of each function is:\n\n$$ f_i(v) = (v \\cdot a_i + b_i) \\pmod{M} $$\n\nWhere:\n- $v$ is the input integer.\n- $a_i$ is the multiplier for function $i$.\n- $b_i$ is the additive constant for function $i$.\n- $M = 100003$ is the modulus.\n\nFor the first 97 functions (`task_00"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 49.449356438126415,
+          "client_elapsed_s": 53.126344048185274,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356451.1829588,
+            "duration_s": 53.1,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 49376.6,
+            "decode_ms": 3703.8,
+            "decode_tok_s": 69.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 208,
+            "drafts_accepted": 158
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function follows a strict, repetitive structure:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * A + B) % 100003\n```\n\nThis structure represents a **deterministic integer transform**. The core logic is an affine transformation over a finite field (or ring) defined by the modulus `100003`.\n\n#### The Affine Transform\nMathematically, each function implements the formula:\n$$ f(x) = (ax + b) \\pmod m $$\nWhere:\n*   $x$ is the input `value`.\n*   $a$ is the multiplier (coefficient).\n*   $b$ is the additive constant.\n*   $m$ is the modulus, fixed at `100003`.\n\nIn this specific module, the parameters $a$ and $b$ change for each function, but"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 49.49703585985117,
+          "client_elapsed_s": 53.437956786947325,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356505.4013484,
+            "duration_s": 53.4,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 49424.1,
+            "decode_ms": 3967.9,
+            "decode_tok_s": 64.5,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 229,
+            "drafts_accepted": 154
+          },
+          "text": "Based on the provided synthetic Python module, here is a detailed technical review and explanation.\n\n### Overview of the Module\n\nThe provided code consists of a series of function definitions, ranging from `task_00000` to `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic within every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general pattern for any function `task_N` is:\n$$ \\text{result} = (value \\times M + C) \\pmod{100003} $$\n\nWhere:\n*   $M$ is the multiplier.\n*   $C$ is the additive constant.\n*   $100003$ is the modulus.\n\n### Deterministic Integer Transforms and Modulo Arithmetic\n\nThe functions implement **deterministic integer transforms**. In computer science, a deterministic transform is a function where the output is entirely determined by the input, with no randomness or side effects. Here, the transform is an affine transformation over the ring of integers modulo $100003$.\n\n**Modulo Arithmetic:**\nThe modulus $1"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 49.215162032982334,
+          "client_elapsed_s": 53.00241428310983,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356559.9168382,
+            "duration_s": 53.0,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 49141.2,
+            "decode_ms": 3814.1,
+            "decode_tok_s": 67.1,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 202,
+            "drafts_accepted": 153
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Overview and Pattern Analysis\n\nThe provided code consists of a series of functions, `task_00000` through `task_00888`, that all perform a specific mathematical operation on an integer input. While the code appears verbose and repetitive, it follows a strict, deterministic pattern.\n\nThe general structure of each function is:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + offset) % 100003\n```\n\nTo understand the logic, we must analyze how `multiplier` and `offset` are derived from the function name (the index `i`).\n\n#### The Multiplier (`m`)\nThe multiplier follows a cyclic pattern based on the index `i`.\n- For `task_00000` to `task_00096`: `m = i + 1`\n- For `task_00097` to `task_00193`: `m = i - 96` (which is equivalent to `(i % 97) + 1"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": [
+        {
+          "case": "arithmetic",
+          "passed": true
+        },
+        {
+          "case": "chinese",
+          "passed": true
+        }
+      ],
+      "startup": {
+        "expert_slots": 6144,
+        "expert_cache_GiB": 8.0,
+        "mirrored_experts": null,
+        "mirror_GiB": null,
+        "probe_GB_s": null,
+        "effective_pcie_frac": 0.3,
+        "prompt_path": "prompt path's streamed ring 96 slots",
+        "stage_lines": [
+          "strata generate: layer split: CUDA1 holds its weights; 28.75 GiB free (its session follows the split search)",
+          "strata generate: layer split: CUDA2 holds its weights; 28.75 GiB free (its session follows the split search)",
+          "strata generate: layer split: CUDA3 holds its weights; 28.75 GiB free (its session follows the split search)",
+          "strata generate: layer split: CUDA1 holds its weights, session [12, 24); 28.47 GiB free",
+          "strata generate: layer split: CUDA2 holds its weights, session [24, 36); 28.47 GiB free",
+          "strata generate: layer split: CUDA3 holds its weights, session [36, 48) and the head; 28.15 GiB free",
+          "strata generate: layer split: CUDA1 runs layers 12-23, expert cache 6144 slots (8.19 GiB), 6144 of its 6144 profiled pairs; slot 0 verified",
+          "strata generate: layer split: CUDA2 runs layers 24-35, expert cache 6144 slots (8.35 GiB), 6144 of its 6144 profiled pairs; slot 0 verified",
+          "strata generate: layer split: CUDA3 runs layers 36-47, expert cache 6144 slots (8.48 GiB), 6144 of its 6144 profiled pairs; slot 0 verified",
+          "strata generate: layer split: CUDA0 runs layers 0-11",
+          "strata serve: layer split: 100% of the experts resident, the prompt path's streamed ring 96 slots",
+          "strata serve: layer split: layers 0-11 (CUDA0), 12-23 (CUDA1), 24-35 (CUDA2), 36-47 (CUDA3), one hand-off per window"
+        ]
+      }
+    },
+    "1gpu": {
+      "configuration": {
+        "backend": "sycl",
+        "exe": "/opt/strata-build-sycl/strata",
+        "cwd": "/src/Strata",
+        "args": [
+          "--pack",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack",
+          "--native",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+          "--ple-gguf",
+          "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+          "--expert-profile",
+          "/src/Strata/data/expert-profile.bin",
+          "--expert-cache",
+          "auto",
+          "--stream-experts",
+          "--vram-reserve-mib",
+          "1536",
+          "--no-prefill-borrow",
+          "--prefill",
+          "auto",
+          "--spec",
+          "4",
+          "--spec-min-p",
+          "0.5",
+          "--mtp",
+          "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt",
+          "--max-context",
+          "131072",
+          "--kv",
+          "int8",
+          "--adapt-every",
+          "1000000",
+          "--prompt-cache",
+          "0",
+          "--kv-resident",
+          "32768",
+          "--pcie-frac",
+          "0.30"
+        ],
+        "env": {
+          "ONEAPI_DEVICE_SELECTOR": "level_zero:3",
+          "SYCL_CACHE_PERSISTENT": "0",
+          "ZES_ENABLE_SYSMAN": "1",
+          "STRATA_VERIFY_DEVICE_PLAN": "1",
+          "STRATA_VERIFY_NO_HOST": "1",
+          "STRATA_STAGER_THREADS": "12",
+          "STRATA_MIRROR_MIB": "16384"
+        },
+        "tokenizer": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer",
+        "model_name": "qwen3.8-flash-next-iq2_xs",
+        "log": "/opt/strata-aligned-20261007/1gpu/engine.log",
+        "host": "127.0.0.1",
+        "port": 18088,
+        "gpu": 0,
+        "open_browser": false,
+        "parallel": 1,
+        "sampling": {
+          "temperature": 0,
+          "seed": 42
+        }
+      },
+      "configuration_sha256": "18188f24c2f7f4d5f6b82e44648de68cb40f48a998ccbb4564ec49c80de1a240",
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 5.337052644928917,
+            "min": 5.3327478328719735,
+            "max": 5.337636017007753
+          },
+          "client_elapsed_s": {
+            "median": 9.11155387503095,
+            "min": 9.045915419934317,
+            "max": 9.381331101991236
+          },
+          "prefill_tok_s": {
+            "median": 772.3784201693348,
+            "min": 772.3492919502951,
+            "max": 773.0489761253185
+          },
+          "decode_tok_s": {
+            "median": 67.3843805111737,
+            "min": 62.835963771139646,
+            "max": 68.55918585966792
+          },
+          "draft_acceptance_pct": {
+            "median": 71.42857142857143,
+            "min": 64.78260869565217,
+            "max": 72.6027397260274
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 40.03644387796521,
+            "min": 40.0314079800155,
+            "max": 40.050338097848
+          },
+          "client_elapsed_s": {
+            "median": 43.84711266099475,
+            "min": 43.73713269317523,
+            "max": 43.84912234079093
+          },
+          "prefill_tok_s": {
+            "median": 819.9646170053576,
+            "min": 819.6590090450653,
+            "max": 820.0179679230033
+          },
+          "decode_tok_s": {
+            "median": 66.93335425000653,
+            "min": 66.73096473164247,
+            "max": 68.608795862032
+          },
+          "draft_acceptance_pct": {
+            "median": 77.11442786069652,
+            "min": 76.47058823529412,
+            "max": 78.32512315270937
+          }
+        }
+      },
+      "measured": [
+        {
+          "label": "tokens-4096-run-1",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "client_ttft_s": 5.337636017007753,
+          "client_elapsed_s": 9.11155387503095,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356934.1410086,
+            "duration_s": 9.1,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5303.3,
+            "decode_ms": 3799.1,
+            "decode_tok_s": 67.4,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 219,
+            "drafts_accepted": 159
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit implementation and algorithmic abstraction. Below is a detailed discussion of the code\u2019s structure, mathematical properties, testing implications, naming conventions, complexity, and maintainability.\n\n## 1. Mathematical Structure and Deterministic Transforms\n\nEach function follows the general form:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\nwhere `MOD = 100003`.\n\nFor most functions, the multiplier and addend are derived from the function index `i`:\n- `multiplier = i + 1`\n- `addend = i`\n\nThus, for `task_00000`, `multiplier = 1`, `addend = 0`.\nFor `task_00001`, `multiplier = 2`, `"
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "client_ttft_s": 5.337052644928917,
+          "client_elapsed_s": 9.045915419934317,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356943.8191187,
+            "duration_s": 9.0,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5303.1,
+            "decode_ms": 3734.0,
+            "decode_tok_s": 68.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 217,
+            "drafts_accepted": 155
+          },
+          "text": "# Analysis of the Synthetic Python Module\n\nThe provided Python module consists of a series of functions, `task_00000` through `task_00112`, each implementing a specific deterministic integer transformation. While the code appears repetitive, it serves as a clear example of modular arithmetic, function design, and the trade-offs between explicit definition and programmatic generation. Below is a detailed discussion of the code's structure, mathematical properties, testing implications, and maintainability.\n\n## 1. Deterministic Integer Transforms and Modular Arithmetic\n\nAt the core of every function in this module is a linear transformation followed by a modulo operation. The general form of each function is:\n\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + addend) % MOD\n```\n\nWhere `MOD` is the constant `100003`. This structure defines a **deterministic integer transform**. For any given input `value`, the output is always the same, assuming no side effects or external state changes. This determinism is crucial for testing, caching, and reproducibility.\n\n### The Role of Modulo Arithmetic\nThe modulo operation (`% 100003`)"
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "expected_prompt_tokens": 4096,
+          "request_sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "client_ttft_s": 5.3327478328719735,
+          "client_elapsed_s": 9.381331101991236,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 4096,
+            "completion_tokens": 256,
+            "total_tokens": 4352,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791356953.4336967,
+            "duration_s": 9.4,
+            "finish": "length",
+            "prompt_tokens": 4096,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 4096,
+            "prompt_read": 4096,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 5298.5,
+            "decode_ms": 4074.1,
+            "decode_tok_s": 62.8,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 230,
+            "drafts_accepted": 149
+          },
+          "text": "# Analysis of Synthetic Python Module: Deterministic Integer Transforms\n\nThe provided Python module consists of a series of functions, labeled `task_00000` through `task_00112`, that perform deterministic integer transformations. Each function takes an integer input `value` and returns an integer result based on a specific linear formula involving multiplication, addition, and modulo arithmetic. This analysis explores the mathematical structure, computational complexity, testing implications, naming conventions, and maintainability of this synthetic code.\n\n## Mathematical Structure and Deterministic Transforms\n\nAt its core, every function in this module implements a linear congruential generator (LCG) step or a simple affine transformation modulo a prime number. The general form of each function is:\n\n$$ f_i(value) = (value \\cdot a_i + b_i) \\pmod{100003} $$\n\nwhere $a_i$ is the multiplier and $b_i$ is the additive constant for task $i$. For most tasks, the multiplier $a_i$ follows the pattern $a_i = i + 1$, and the additive constant $b_i$ follows the pattern $b_i = i$. For example, `task_00000` uses"
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "client_ttft_s": 40.050338097848,
+          "client_elapsed_s": 43.84912234079093,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791357008.7959867,
+            "duration_s": 43.8,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 39977.6,
+            "decode_ms": 3824.7,
+            "decode_tok_s": 66.9,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 201,
+            "drafts_accepted": 155
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + A_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $A_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements a **deterministic linear congruential generator (LCG)** step, albeit in a static, hard-coded manner. In computer science, LCGs are often used for pseudo-random number generation, but here they are used as deterministic hash-like transforms or state transitions.\n\n**Modulo Arithmetic:**"
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "client_ttft_s": 40.0314079800155,
+          "client_elapsed_s": 43.73713269317523,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791357053.7238495,
+            "duration_s": 43.7,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 39960.1,
+            "decode_ms": 3731.3,
+            "decode_tok_s": 68.6,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 203,
+            "drafts_accepted": 159
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Structural Overview and Pattern Analysis\n\nThe provided code consists of a series of functions named `task_00000` through `task_00888`. Each function accepts a single integer argument `value` and returns an integer. The core logic in every function is identical in structure, differing only in the specific constants used for multiplication and addition.\n\nThe general formula for any function `task_N` is:\n$$ f_N(x) = (x \\cdot M_N + C_N) \\pmod{100003} $$\n\nWhere:\n*   $M_N$ is the multiplier.\n*   $C_N$ is the additive constant.\n*   $100003$ is the modulus.\n\n### 2. Deterministic Integer Transforms and Modulo Arithmetic\n\nThe code implements **deterministic integer transforms**. In computer science, a deterministic function is one that, given the same input, will always produce the same output. This is crucial for reproducibility in testing, caching, and distributed systems.\n\nThe use of the modulo operator (`%`) restricts the output range to"
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "expected_prompt_tokens": 32768,
+          "request_sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "client_ttft_s": 40.03644387796521,
+          "client_elapsed_s": 43.84711266099475,
+          "finish_reason": "length",
+          "usage": {
+            "prompt_tokens": 32768,
+            "completion_tokens": 256,
+            "total_tokens": 33024,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "engine": {
+            "projection": null,
+            "time": 1791357098.545647,
+            "duration_s": 43.8,
+            "finish": "length",
+            "prompt_tokens": 32768,
+            "reused": 0,
+            "output_tokens": 256,
+            "prompt_total": 32768,
+            "prompt_read": 32768,
+            "reasoning_recoveries": 0,
+            "reasoning_repeat_coverage": 0.0,
+            "engine_generated": 256,
+            "prompt_ms": 39962.7,
+            "decode_ms": 3836.3,
+            "decode_tok_s": 66.7,
+            "hit_rate": null,
+            "pcie_share": null,
+            "ram_blobs": 0,
+            "file_blobs": 0,
+            "file_mb": 0.0,
+            "drafts_offered": 204,
+            "drafts_accepted": 156
+          },
+          "text": "Based on the provided Python module, here is a detailed technical review and explanation.\n\n### 1. Overview and Pattern Analysis\n\nThe provided code consists of a series of functions, `task_00000` through `task_00888`, that all perform a specific mathematical operation on an integer input. While the code appears verbose and repetitive, it follows a strict, deterministic pattern.\n\nThe general structure of each function is:\n```python\ndef task_XXXXX(value: int) -> int:\n    return (value * multiplier + offset) % 100003\n```\n\nTo understand the logic, we must analyze how `multiplier` and `offset` are derived from the function name (the index `i`).\n\n#### The Multiplier Pattern\nThe multiplier follows a cyclic pattern based on the index `i`:\n- **Initial Phase (i < 97):** The multiplier is `i + 1`.\n  - `task_00000`: multiplier = 1\n  - `task_00001`: multiplier = 2\n  - ...\n  - `task_00096`: multiplier = 97\n- **Reset"
+        }
+      ],
+      "excluded_warmups": 3,
+      "request_identity": [
+        {
+          "label": "tokens-4096-run-1",
+          "sha256": "5d94c652067354bbe72930d2bdad3886564f08cf2546b32411af02d33ad3ce05",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "sha256": "8da8a04e70e4d916f6630729082bdfb9d6ebbb47117aad60bc0541bce198a213",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "sha256": "946079edb58e764050805886156dc8f877cc29e1ca8d01c84e9a1e7917d49492",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-1",
+          "sha256": "e37cfc2ab9867d91130927440df24a57255a736b8d0d829d07d828e22e3de572",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "sha256": "ed2dfaa11aecad9f4563f33bb5f5d4b8704486508700b8fa572722cc1225ee26",
+          "matches_5090_request_bytes": true
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "sha256": "2a3c7342622e80c3cd8b37e062f0a2f64640c119ece8cccbf168639041eac079",
+          "matches_5090_request_bytes": true
+        }
+      ],
+      "smoke": null,
+      "startup": {
+        "expert_slots": 17772,
+        "expert_cache_GiB": 23.87,
+        "mirrored_experts": 6804,
+        "mirror_GiB": 9.15,
+        "probe_GB_s": null,
+        "effective_pcie_frac": 0.3,
+        "prompt_path": "prompt path allocates its own buffers (too few cache slots to borrow)",
+        "stage_lines": []
+      }
+    }
+  },
+  "limitations": [
+    "Development evidence, not formal acceptance or a GPU-only comparison.",
+    "CUDA community reports use different source versions, host hardware and engine policies.",
+    "Our server fixes the otherwise omitted request seed to 42.",
+    "Each length has an excluded warmup beyond the public harness's short warmup.",
+    "128000-token requests, vision and general answer quality were not measured.",
+    "SYCL hit_rate and pcie_share counters are unavailable; zero ram_blobs does not prove zero PCIe mirror traffic.",
+    "Primary GPU-count arm order was 2gpu, 4gpu, then the matching fixed-pcie 1gpu baseline.",
+    "Borrow-setting records were collected earlier; they are exploratory and use a different container identity from the final baseline.",
+    "Earlier automatic-probe no-borrow prefill differs from the matching explicit-parameter baseline; small gains should not be treated as stable speedups."
+  ],
+  "multi_gpu_plan": {
+    "evidence_class": "development same-host GPU-count scaling; no formal acceptance",
+    "user_scope": "Confirm 2-card and 4-card SYCL support and collect same-workload data if supported",
+    "baseline": "no-borrow single B70 cc:00.0: same requests and effective pcie_frac 0.30",
+    "arms": [
+      "2gpu",
+      "4gpu"
+    ],
+    "targets": [
+      4096,
+      32768
+    ],
+    "output_cap": 256,
+    "samples_per_length": 3,
+    "seed_schedule": [
+      42,
+      42,
+      42
+    ],
+    "context": 131072,
+    "kv": "int8",
+    "kv_resident": 32768,
+    "prefill": "auto with no-prefill-borrow (effective 2048)",
+    "spec": 4,
+    "spec_min_p": 0.5,
+    "temperature": 0,
+    "reasoning": "none",
+    "parallel_requests": 1,
+    "model_and_source_reuse": "same verified GGUF/MTP and binary as aligned single-card run",
+    "engine_sha256": "8fbececa8b72cc758c9b5c9970bad761a51eb410317ed77ee89a3b59a69cd48c",
+    "prepared_image_id": "sha256:065778dc5445d3ce2a099d7e7f019aea6cbf18e24702e0870a25d12c06ebc931",
+    "omix_base_image_id": "sha256:53f0003fa66044935d69065836ba8ac40fab289b94655667fdeac0bdfa7e75c6",
+    "container_id": "b876caad3df6d7600e448c424119f2bf6ef925953ecfd9230d38f47c0865a69c",
+    "device_mapping_tsv": "dpct_index\tpci_address\tname\tmemory_bytes\n0\t0000:18:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n1\t0000:36:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n2\t0000:54:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n3\t0000:cc:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n",
+    "split": {
+      "2gpu": {
+        "devices": [
+          0,
+          3
+        ],
+        "layers": [
+          [
+            0,
+            23
+          ],
+          [
+            24,
+            47
+          ]
+        ]
+      },
+      "4gpu": {
+        "devices": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "layers": [
+          [
+            0,
+            11
+          ],
+          [
+            12,
+            23
+          ],
+          [
+            24,
+            35
+          ],
+          [
+            36,
+            47
+          ]
+        ]
+      }
+    },
+    "settings_difference": "explicit layer split and split devices; mirror cap is 0 for all-resident multi-card paths as documented; other explicit engine settings preserved",
+    "exclusions": [
+      "loading",
+      "short warmup",
+      "per-length warmups",
+      "arithmetic and Chinese functional smoke requests"
+    ],
+    "functional_gate": "startup confirms requested stage count and 100% expert residency; arithmetic 703 and Chinese capital smoke checks must pass",
+    "device_occupancy": "all four B70s idle after single-card run; recheck before execution",
+    "decisions": {
+      "dependencies": "reuse omix container filesystem snapshot; no reinstall",
+      "binary_and_parity": "reuse unchanged binary checks",
+      "devices": "execute metadata mapping and new multi-card functional/performance validation",
+      "model_download": "reuse host files read-only",
+      "community_comparison": "request SHA256 must match published 5090 records"
+    },
+    "primary_baseline": "1gpu: explicit pcie_frac 0.30 in same prepared image/container as 2gpu and 4gpu",
+    "baseline_recheck_reason": "The earlier no-borrow baseline used an automatic probe, while multi-card arms pin --pcie-frac 0.30. Recollect the baseline with matching explicit engine settings and runtime filesystem; retain earlier observations.",
+    "primary_arm_order": [
+      "2gpu",
+      "4gpu",
+      "1gpu"
+    ]
+  },
+  "primary_gpu_count_baseline": "1gpu",
+  "setting_comparison": {
+    "4096": {
+      "prefill_tok_s_median_change_pct": -14.533674998791268,
+      "decode_tok_s_median_change_pct": 5.063606194690262,
+      "client_ttft_s_median_change_pct": 16.899780347272596,
+      "client_elapsed_s_median_change_pct": 12.691368736982533,
+      "per_request": [
+        {
+          "label": "tokens-4096-run-1",
+          "prefill_change_pct": -20.29667257807568,
+          "decode_change_pct": 5.063606194690262
+        },
+        {
+          "label": "tokens-4096-run-2",
+          "prefill_change_pct": -14.533674998791268,
+          "decode_change_pct": -7.891166530994842
+        },
+        {
+          "label": "tokens-4096-run-3",
+          "prefill_change_pct": -12.46633956154698,
+          "decode_change_pct": 14.77954641498802
+        }
+      ]
+    },
+    "32768": {
+      "prefill_tok_s_median_change_pct": 5.512357788403377,
+      "decode_tok_s_median_change_pct": 0.923555954297206,
+      "client_ttft_s_median_change_pct": -5.217370569555868,
+      "client_elapsed_s_median_change_pct": -4.896188222570541,
+      "per_request": [
+        {
+          "label": "tokens-32768-run-1",
+          "prefill_change_pct": 5.551697826264879,
+          "decode_change_pct": 4.522846523830348
+        },
+        {
+          "label": "tokens-32768-run-2",
+          "prefill_change_pct": 3.626127411064828,
+          "decode_change_pct": -6.422731604554343
+        },
+        {
+          "label": "tokens-32768-run-3",
+          "prefill_change_pct": 5.5572284383023085,
+          "decode_change_pct": 1.2296487848642457
+        }
+      ]
+    }
+  },
+  "gpu_scaling": {
+    "2gpu": {
+      "4096": {
+        "prefill_ratio": 0.9866966844044209,
+        "decode_ratio": 1.0625069918335384,
+        "elapsed_ratio": 1.017079384426968
+      },
+      "32768": {
+        "prefill_ratio": 1.0142328161839909,
+        "decode_ratio": 1.0348214285714286,
+        "elapsed_ratio": 1.0192072508285905
+      }
+    },
+    "4gpu": {
+      "4096": {
+        "prefill_ratio": 0.846897058353828,
+        "decode_ratio": 1.012904257871864,
+        "elapsed_ratio": 0.9085347864261996
+      },
+      "32768": {
+        "prefill_ratio": 0.8093449123673967,
+        "decode_ratio": 1.0027791615322097,
+        "elapsed_ratio": 0.825336534003275
+      }
+    }
+  },
+  "community_reference": {
+    "rtx5090": {
+      "source": "https://github.com/Niko1221/Strata/blob/main/bench/results/2026-09-30-community-rtx-5090/README.md",
+      "source_revision": "d6708a4aae15b4860000d54c8af9e84d684bce09",
+      "context": 131072,
+      "summary": {
+        "4096": {
+          "prompt_tokens": {
+            "median": 4096,
+            "min": 4096,
+            "max": 4096
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 0.9743533680002656,
+            "min": 0.9733456560002196,
+            "max": 1.1827884900003482
+          },
+          "client_elapsed_s": {
+            "median": 2.391696067000339,
+            "min": 2.3506501550000394,
+            "max": 2.7608979090000503
+          },
+          "prefill_tok_s": {
+            "median": 4269.780047951632,
+            "min": 3510.1551118347757,
+            "max": 4273.343766301513
+          },
+          "decode_tok_s": {
+            "median": 179.37219730941703,
+            "min": 161.31064902331443,
+            "max": 184.8375451263538
+          }
+        },
+        "32768": {
+          "prompt_tokens": {
+            "median": 32768,
+            "min": 32768,
+            "max": 32768
+          },
+          "cached_tokens": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "output_tokens": {
+            "median": 256,
+            "min": 256,
+            "max": 256
+          },
+          "client_ttft_s": {
+            "median": 5.950024114999906,
+            "min": 5.941602006999801,
+            "max": 5.9679448089996185
+          },
+          "client_elapsed_s": {
+            "median": 7.389697677000186,
+            "min": 7.348446455000158,
+            "max": 7.498308491999978
+          },
+          "prefill_tok_s": {
+            "median": 5543.187738945089,
+            "min": 5527.105893465573,
+            "max": 5549.571520509433
+          },
+          "decode_tok_s": {
+            "median": 175.69144190515408,
+            "min": 166.10433428497274,
+            "max": 181.77945040119295
+          }
+        }
+      }
+    },
+    "rtx5070ti": {
+      "source": "https://github.com/obiscr/Strata/blob/36ddda197895b09895b5bcbb956813b35fce219b/bench/results/2026-10-06-community-rtx5070ti-5900x/README.md",
+      "engine_version": "0.1.39",
+      "context": 65536,
+      "summary": {
+        "4096": {
+          "prefill_tok_s_median": 1992,
+          "decode_tok_s_median": 102.0
+        },
+        "32768": {
+          "prefill_tok_s_median": 2817,
+          "decode_tok_s_median": 101.3
+        }
+      }
+    }
+  },
+  "sampled_telemetry": {
+    "samples": 138,
+    "nominal_sleep_s": 5,
+    "gpu_memory_MiB_max": 31723.1015625,
+    "system_used_GiB_max": 25.317481994628906,
+    "swap_used_MiB_min": 1147.18359375,
+    "swap_used_MiB_max": 1147.18359375,
+    "note": "System-wide sampled values include other services; not process RSS or continuous peaks."
+  },
+  "multi_gpu_sampled_memory": {
+    "0": 21780.01,
+    "1": 13406.8,
+    "2": 13568.92,
+    "3": 23755.13
+  },
+  "multi_gpu_sampled_memory_note": "MiB, system-wide sampled maximum across both multi-card arms; not a continuous peak.",
+  "artifact_hashes": [
+    {
+      "file": "/opt/strata-build-sycl/strata",
+      "bytes": 59953384,
+      "sha256": "8fbececa8b72cc758c9b5c9970bad761a51eb410317ed77ee89a3b59a69cd48c"
+    },
+    {
+      "file": "/src/Strata/data/expert-profile.bin",
+      "bytes": 196632,
+      "sha256": "8f59b4aa8873209dff11c11e37bcda9529a1335b724a1afeea37bf6388975baf"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/dense.bin",
+      "bytes": 1538035200,
+      "sha256": "d2af3d8331e5c7a1985d1d589747230f9d56719a6d33c7cddc9ee6b81cde6b13"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/native_experts.txt",
+      "bytes": 3289,
+      "sha256": "48df605acb89c7e8c3176a51cec777c2ed344ea439e8f3a37e5ce4f9dcb6946c"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/chat_template.jinja",
+      "bytes": 9993,
+      "sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/merges.txt",
+      "bytes": 3353258,
+      "sha256": "4ba698529766c7a2f5052083ea10cdf2485577f5237a332ee291054eb11e3332"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/token_type.json",
+      "bytes": 744960,
+      "sha256": "5088c8c298fc06af8382ddb3b76c888703ac2634e82263b97eedcc2ad202738b"
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/vocab.json",
+      "bytes": 5737005,
+      "sha256": "4ba64f0332abcfb0b600b7df1537d1e836e68009d5fb7cdb77339738dc6365c4"
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/dense.bin",
+      "bytes": 116099072,
+      "sha256": "c724dc0b0822ada5d2977bf5bde821605feabaa64ea2e0045b67ca656329070a"
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/experts.bin",
+      "bytes": 707788800,
+      "sha256": "09398406be61f1f54c93861f449e48b8df0bfccbc9ec9b2b7636775a6ea9244f"
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/draft_vocab.bin",
+      "bytes": 425196,
+      "sha256": "b1e1d3a7a9e4bf862dcd5923ce661fb59bbd07907e594df5cf86a62ac235cb91"
+    }
+  ],
+  "model_provenance": {
+    "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+    "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+    "files": [
+      {
+        "path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+        "bytes": 39225954592,
+        "sha256": "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7",
+        "current_size_matches_receipt": true,
+        "mtime_ns": 1791351833491475196
+      },
+      {
+        "path": "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+        "bytes": 28800138432,
+        "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113",
+        "current_size_matches_receipt": true,
+        "mtime_ns": 1791351725654483475
+      }
+    ],
+    "verified_unix": 1791351882.212116,
+    "verification_reuse": "Both GGUF hashes were fully verified in the prior experiment; reused unchanged host files mounted read-only for the aligned and multi-card phase."
+  },
+  "hardware": {
+    "cpu": "Intel Xeon w5-3435X, 16 cores / 32 threads",
+    "host_ram_GiB": 503.36,
+    "container_cpu_quota": 16,
+    "container_memory_limit_GiB": 96,
+    "gpu": "Intel Arc Pro B70 (0xE223), four physical cards",
+    "dpct_mapping": "dpct_index\tpci_address\tname\tmemory_bytes\n0\t0000:18:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n1\t0000:36:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n2\t0000:54:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n3\t0000:cc:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n",
+    "single_card_mapping": "dpct_index\tpci_address\tname\tmemory_bytes\n0\t0000:cc:00.0\tIntel(R) Arc(TM) Pro B70 Graphics\t34242297856\n",
+    "kernel": "6.17.0-1007-intel",
+    "compute_runtime": "26.31.39395.13",
+    "oneapi_dpcpp": "2026.1.1"
+  },
+  "shared_artifact_identity": [
+    {
+      "file": "/src/Strata/data/expert-profile.bin",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/dense.bin",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/native_experts.txt",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/chat_template.jinja",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/merges.txt",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/token_type.json",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/ed59f92082b1e93c0e96d60a8b11aab089b52f09/pack/tokenizer/vocab.json",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/dense.bin",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/experts.bin",
+      "same_sha256_as_5090": true
+    },
+    {
+      "file": "/models/Strata/mtp-Qwen3.8-Flash-Next-de4b8e4d43b917e7706784d8bb445c9af86a3540/rt/draft_vocab.bin",
+      "same_sha256_as_5090": true
+    }
+  ],
+  "primary_measured_samples": 18,
+  "all_measured_samples": 36
+}

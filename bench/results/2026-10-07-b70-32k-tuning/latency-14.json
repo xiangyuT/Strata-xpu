@@ -1,0 +1,61 @@
+{
+  "class": "latency_observation",
+  "samples": 3,
+  "metrics": {
+    "client_ttft_ms": {
+      "samples": [
+        35204.39450000413,
+        35185.93521695584,
+        35199.32005996816
+      ],
+      "mean": 35196.54992564271
+    },
+    "client_tpot_ms": {
+      "samples": [
+        14.713663568574132,
+        14.34061877319918,
+        14.752093737251034
+      ],
+      "mean": 14.602125359674782
+    },
+    "engine_ipc_ttft_ms": {
+      "samples": [
+        35158.3267,
+        35139.198741,
+        35153.77028
+      ],
+      "mean": 35150.431907
+    },
+    "engine_ipc_tpot_ms": {
+      "samples": [
+        14.71346942352941,
+        14.340544450980392,
+        14.752006462745099
+      ],
+      "mean": 14.602006779084967
+    },
+    "engine_average_ms_per_generated_token": {
+      "samples": [
+        14.75703125,
+        14.384765625,
+        14.79453125
+      ],
+      "mean": 14.645442708333334
+    },
+    "client_post_text_tail_ms": {
+      "samples": [
+        0.36339997313916683,
+        0.4212448839098215,
+        0.6387480534613132
+      ],
+      "mean": 0.4744643035034339
+    }
+  },
+  "content_events": [
+    245,
+    245,
+    240
+  ],
+  "definitions": "Client TPOT uses first-to-last nonempty text-delta arrival divided by engine-generated tokens minus one; chunking may coalesce initial tokens. IPC times are frontend reader arrival times, not producer compute times. Delta gaps are not token gaps.",
+  "old_record_limit": "Earlier records lack per-delta and per-token arrivals; their decode_ms/generated is engine reciprocal throughput only."
+}

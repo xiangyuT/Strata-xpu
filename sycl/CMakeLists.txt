@@ -19,6 +19,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 add_compile_definitions(STRATA_VERSION="${PROJECT_VERSION}-sycl")
+option(STRATA_SYCL_WORKLOAD_TRACE "Build CPU shape/stage annotations for profiling only" OFF)
+if(STRATA_SYCL_WORKLOAD_TRACE)
+  set_property(SOURCE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/prefill.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/gemm.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/program/generate.cpp
+    APPEND PROPERTY COMPILE_DEFINITIONS STRATA_SYCL_WORKLOAD_TRACE=1)
+endif()
 
 set(STRATA_SYCL_AOT "" CACHE STRING "AOT device for the GPU code, e.g. bmg-g31 (empty: SPIR-V, JIT at run time)")
 set(_sycl_flags -fsycl)
@@ -181,6 +189,12 @@ if(STRATA_SYCL_PARITY)
   add_executable(gemm_stride_parity src/prefill/gemm_stride_parity.cpp)
   target_link_libraries(gemm_stride_parity PRIVATE strata_prefill)
   add_test(NAME gemm_stride_parity COMMAND gemm_stride_parity)
+  add_executable(iq_dequant_gu_bench src/kernels/iq_dequant_gu_bench.cpp)
+  target_link_libraries(iq_dequant_gu_bench PRIVATE strata_kernels)
+  add_test(NAME iq_dequant_gu_parity COMMAND iq_dequant_gu_bench)
+  add_executable(copy_queue_parity src/prefill/copy_queue_parity.cpp)
+  target_link_libraries(copy_queue_parity PRIVATE strata_includes)
+  add_test(NAME copy_queue_parity COMMAND copy_queue_parity)
   foreach(p IN ITEMS dequant_s2 s2_gemv iq shared_expert gr gdn s2_gemv_q8 sampler rope quantize_act router_top10
                      s_gemv elementwise bf16_gemv s_gemv_q8k qsa ple kv_q8 kv_stream kv_q4 cvec)
     strata_resolve(_src src/kernels/${p}_parity.cpp)

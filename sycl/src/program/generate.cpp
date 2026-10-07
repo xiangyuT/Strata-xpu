@@ -1,4 +1,5 @@
 #define DPCT_COMPAT_RT_VERSION 12080
+#include "strata/workload_trace.hpp"
 // src/program/generate.cpp - P2.S6: `strata generate`.
 //
 // THE DRIVER, and the first program in this project that answers a question.
@@ -6625,6 +6626,8 @@ int main(int argc, char **argv) try {
             // host copies and slots are always current (every writer writes both), so they need nothing
             if (resume > 0 && reread_to <= 0) mtp.kv_restore(resume);
             tr("request", n, geni ? 1 : 0);
+            strata::workload_trace::set_context(0, n, -1);
+            strata::workload_trace::Scope request_trace("request", nullptr, n);
             mtp.set_prompt_len(n);
             const int64_t read_from = reread_to > 0 ? 0 : resume;
             conversations.limit_reuse(read_from);
@@ -6847,6 +6850,7 @@ int main(int argc, char **argv) try {
             ver.set_history(hist_n > 0 ? d_hist : nullptr, hist_n);
             bool cancelled = false;
             tr("prompt start", n - 1);
+            strata::workload_trace::Scope prompt_trace("request.prefill", nullptr, n - 1);
             // The prompt is read in two parts when it has a turn boundary past `resume`: up to the last <|im_start|>
             // (the conversation so far), a checkpoint there, then the new turn's header.  The next request of the same
             // chat renders the same history - but not always the same header or the thinking of this reply - so that
@@ -6930,6 +6934,7 @@ int main(int argc, char **argv) try {
                 return 1;
             }
             tr("prompt done (slots refilled)");
+            prompt_trace.finish();
             const double prompt_ms = std::chrono::duration<double, std::milli>(Clock::now() - r0).count();
             std::printf("REUSED %lld\n", (long long) resume);   // the prompt is read; the first window comes next
             std::fflush(stdout);
@@ -6952,6 +6957,8 @@ int main(int argc, char **argv) try {
             for (int64_t i = 0; i < n - 1; ++i) consumed.push_back((int32_t) ids[(size_t) i]);
             const char* finish = "length";
             const Clock::time_point d0 = Clock::now();
+            strata::workload_trace::set_context(n - 1, 0, -1);
+            strata::workload_trace::Scope decode_trace("request.decode");
             // STRATA_DECODE_TIMING=1: where a request's decode time goes (one line per request)
             static const bool dec_timing = std::getenv("STRATA_DECODE_TIMING") != nullptr;
             struct DecSnap {
@@ -7018,6 +7025,8 @@ int main(int argc, char **argv) try {
                         .wait();
                 }
                 tr("window", p, T);
+                strata::workload_trace::set_context(p, T, -1);
+                strata::workload_trace::Scope verify_trace("decode.verify", nullptr, T);
                 const Clock::time_point tw0 = Clock::now();
                 if (!ver.run(T, window.data(), p, win_pool_fn, win_pool_user, outv.data(), err) || drive.d.failed) {
                     std::printf("ERR %s\n", drive.d.failed && drive.d.fail ? drive.d.fail : err.c_str());
@@ -7027,6 +7036,8 @@ int main(int argc, char **argv) try {
                 while (a < T - 1 && window[(size_t) a + 1] == outv[(size_t) a]) ++a;
                 if (from_sfx) { ++sfx_windows; sfx_drafts += T - 1; sfx_ok += a; }
                 const Clock::time_point tw1 = Clock::now();
+                verify_trace.finish();
+                strata::workload_trace::Scope commit_trace("decode.commit_emit", nullptr, T);
                 std::thread adapt_thr;   // the adaptive tier beside the commit and the draft (as in generate)
                 bool adapt_ok = true;
                 if (!drive.d.usage.empty() && ((rounds + 1) % o.adapt_every) == 0)
@@ -7076,12 +7087,15 @@ int main(int argc, char **argv) try {
                 std::fflush(stdout);
                 ++rounds;
                 const Clock::time_point tw2 = Clock::now();
+                commit_trace.finish();
+                strata::workload_trace::Scope draft_trace("decode.draft", nullptr, T);
                 // coupled drafts with penalties: the next window's row-0 history (`consumed` holds this window's
                 // commit, outv[a] is its row 0) - the drafts extend it on the device as the verify rows will
                 if (hist_n > 0 && mtp.coupled() && !eos && produced_n < max_new)
                     mtp.set_draft_history(consumed.data(), (int64_t) consumed.size(), outv[(size_t) a]);
                 const bool drafted = eos || produced_n >= max_new ||
                                      mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) req_spec_min_p);
+                draft_trace.finish();
                 {
                     const Clock::time_point tw3 = Clock::now();
                     auto msd = [](Clock::time_point a0, Clock::time_point b0) { return std::chrono::duration<double, std::milli>(b0 - a0).count(); };
@@ -7106,6 +7120,7 @@ int main(int argc, char **argv) try {
                 p += a + 1;
             }
             const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
+            decode_trace.finish();
             // the last commit (set_commit_async): the session is complete before anything reads or copies it
             if (!ver.wait_commit(err)) {
                 std::printf("ERR %s\n", err.c_str());
@@ -7280,6 +7295,8 @@ int main(int argc, char **argv) try {
                         (long long) req_offload);
             std::fflush(stdout);
             if (drive.routing != nullptr) std::fflush(drive.routing);   // the routing trace survives a crash and is watchable mid-session
+            request_trace.finish();
+            strata::workload_trace::flush();
             // "12288 of 98179" when cancelled mid-read (#471), the rate from what was read
             char read_txt[64];
             if (cancelled)

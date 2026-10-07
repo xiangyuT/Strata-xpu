@@ -3,7 +3,9 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_queue.hpp"
+#include "strata/prefill_copy_queue.hpp"
 #include "strata/prefill/prefill.hpp"
+#include "strata/workload_trace.hpp"
 #include "strata/core/gguf_expert_source.hpp"
 #include "strata/core/mtp.hpp"
 #include "strata/core/progress.hpp"
@@ -502,6 +504,7 @@ struct Prefill::Impl {
     bool borrowed = false;
     dpct::queue_ptr cs = &dpct::get_in_order_queue(),
                     copy = &dpct::get_in_order_queue();
+    std::unique_ptr<sycl::queue> copy_without_profiling;
     Gemm gemm;
     std::vector<void*> owned;
     // chunk buffers
@@ -647,7 +650,10 @@ void Prefill::release() {
         if (impl_->ple_emb_host[b] && impl_->ple_pageable[b].empty())
             sycl::free(impl_->ple_emb_host[b], dpct::get_in_order_queue());
     }
-    if (impl_->copy) dpct::get_current_device().destroy_queue(impl_->copy);
+    if (impl_->copy_without_profiling) {
+        impl_->copy_without_profiling.reset();
+        impl_->copy = nullptr;
+    } else if (impl_->copy) dpct::get_current_device().destroy_queue(impl_->copy);
     if (impl_->grp_host)
         sycl::free(impl_->grp_host, dpct::get_in_order_queue());
     for (void *p : impl_->owned)
@@ -812,8 +818,12 @@ bool Prefill::init(const core::WeightTable &wt, const core::ModelGeometry &g,
     DPCT1025: The SYCL queue is created ignoring the flag and priority
     options.
     */
-    if (DPCT_CHECK_ERROR(
-            m.copy = dpct::get_current_device().create_queue(true)) != 0) {
+    const char* copy_profiling = std::getenv("STRATA_SYCL_PREFILL_COPY_PROFILING");
+    if (copy_profiling && std::strcmp(copy_profiling, "0") == 0) {
+        m.copy_without_profiling = strata::make_prefill_copy_queue(*m.cs);
+        m.copy = m.copy_without_profiling.get();
+    } else if (DPCT_CHECK_ERROR(
+                   m.copy = dpct::get_current_device().create_queue(true)) != 0) {
         err = "prefill: copy stream"; return false;
     }
     const size_t T = (size_t) chunk;
@@ -1502,6 +1512,7 @@ struct PfTimer {
     bool sync = std::getenv("STRATA_PREFILL_SYNC") != nullptr;
     long long n_sync = 0;
     void mark(int phase, dpct::queue_ptr s) {
+        workload_trace::phase(phase < kPfCount ? kPfNames[phase] : "unknown", s);
         if (sync) {
             const auto t0 = std::chrono::steady_clock::now();
             s->wait();
@@ -1663,6 +1674,8 @@ bool Prefill::run(const int64_t *tokens, int64_t n, int64_t pos0,
     };
     auto ple_gather = [&m, &ss, tokens, n, prev0, &chunk_len](int64_t c0, int buf, std::string& e) -> bool {
         const int64_t T = chunk_len(c0);
+        workload_trace::ContextGuard trace_context(c0, T, -1);
+        workload_trace::Scope trace("prefill.PLE_IO", nullptr, T);
         auto at = [&](int64_t i) { return i < 2 ? prev0[i] : (int32_t) tokens[i - 2]; };   // prev0, then the tokens
         int32_t pv[2] = {at(c0), at(c0 + 1)};
         for (int64_t t = 0; t < T; ++t) {
@@ -1682,6 +1695,8 @@ bool Prefill::run(const int64_t *tokens, int64_t n, int64_t pos0,
         if (should_stop && should_stop()) { err = "cancelled"; return false; }
         if (std::getenv("STRATA_TRACE")) { std::fprintf(stderr, "strata trace: prompt chunk %lld of %lld\n", (long long) c0, (long long) n); std::fflush(stderr); }
         const int64_t T = chunk_len(c0), p0 = pos0 + c0;
+        workload_trace::ContextGuard chunk_context(p0, T, -1);
+        workload_trace::Scope chunk_trace("prefill.chunk", cs, T);
         core::progress_at("reading the prompt (batched): preparing the chunk from token", p0);   // #251
         ++stats_.chunks;
         pt.mark(kPfStart, cs);
@@ -2147,6 +2162,8 @@ bool Prefill::run(const int64_t *tokens, int64_t n, int64_t pos0,
         };
         for (int64_t l = LB; l < LE; ++l) {
             core::progress_beat();   // the serve watchdog: a prompt chunk of 8192 tokens is still moving
+            workload_trace::ContextGuard layer_context(p0, T, l);
+            workload_trace::Scope layer_trace("prefill.layer", cs, T);
             if (l > LB) pf_step("reading the prompt (batched, step sync): the experts and the rest of layer", l - 1);
             core::progress_at("reading the prompt (batched): layer", l, p0);   // #251: a stall names layer and chunk
             const core::LayerView v(*m.wt, l);
