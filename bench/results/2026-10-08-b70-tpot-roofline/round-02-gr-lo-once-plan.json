@@ -1,0 +1,31 @@
+{
+  "candidate": "GR Lo preparation once in existing sliced-down reduce kernel",
+  "evidence_class": "development_performance_comparison",
+  "source_base": "aeea0ab7334bca3db4ef1f814ce4275d4d10c991 plus profiling/roof tools and marginal disabled static-T experiment",
+  "trace": "gr-up-exact-bindings.jsonl",
+  "roof": "gr-roofline.json",
+  "exact_contract": {
+    "n_embd": 2560,
+    "HC": 4,
+    "LR": 320,
+    "weight_dtype": "BF16",
+    "activations_accumulation_lo_materialization": "FP32",
+    "T_domain": "1..8",
+    "route": "existing sliced-down GR read; other down routes and GR-v3 remain legacy"
+  },
+  "removed_cost": "For each GR call, 160 up work-groups redundantly compute T*320 SiLU values and write the same lo[T,320] output. Existing down-reduce already owns the final ordered 80-slice sum per element. Move zero-initialized split-0 addition, /HC and identical native::exp expression there; up stages materialized FP32 lo without recomputing or rewriting it.",
+  "preserve": [
+    "ordered80-slice sum",
+    "explicit +0 split addition including signed zero",
+    "FP32 lo output boundary",
+    "existing up dot and xor reduction order",
+    "barriers, weights, output layouts",
+    "legacy/default/other-down/v3 routes",
+    "MTP/KV/cache/request fixtures"
+  ],
+  "correctness": "real8weightsets, T1..8, apply on/off, zero/tiny/high/stream-asymmetric inputs and all visible outputs byte-exact with guards; add negative-zero pattern if needed",
+  "micro": "same-process3arms3s continuous perT1/2/3/4/6/8 after2s/1000call warmup;8weights/inputs rotate; event and wall intervals, <=1%drift; reject weak or main-shape regressions",
+  "TPOT_validation": "Only after micro support: fresh B/C/B3measured+3warm each, no profilers, seed42, fixed32768/256, check outputs and drafts; before/after drift and every paired delta",
+  "first_candidate_disposition": "static-T marginal; not enabled or selected for E2E",
+  "defaults": "new env STRATA_SYCL_GR_LO_ONCE opt-in0; no version changes"
+}

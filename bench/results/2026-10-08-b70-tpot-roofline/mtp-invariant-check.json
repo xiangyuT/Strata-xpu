@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "offered_accepted_by_sample": {
+    "14-bcb-final-baseline-before": [
+      [
+        201,
+        155
+      ],
+      [
+        203,
+        159
+      ],
+      [
+        204,
+        156
+      ]
+    ],
+    "15-bcb-final-candidate": [
+      [
+        201,
+        155
+      ],
+      [
+        203,
+        159
+      ],
+      [
+        204,
+        156
+      ]
+    ],
+    "16-bcb-final-baseline-after": [
+      [
+        201,
+        155
+      ],
+      [
+        203,
+        159
+      ],
+      [
+        204,
+        156
+      ]
+    ]
+  },
+  "sampling_args_and_policy_identical": true,
+  "output_text_identical": true
+}

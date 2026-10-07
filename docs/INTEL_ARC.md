@@ -1,5 +1,11 @@
 # Intel Arc (experimental)
 
+> **TPOT follow-up, 2026-10-08:** the single-card decode trace, measured SIMD/memory
+> roofs and candidate cost analysis are now recorded in
+> [B70 TPOT tuning](../bench/results/2026-10-08-b70-tpot-roofline/README.md).
+> This supersedes the earlier prefill-first next-step guidance. Historical timings
+> below retain their original conditions and binary identities.
+
 > **Fork update, 2026-10-07:** this fork aligns the SYCL port with the shared engine headers at
 > `82f46a8c8f475f001ad76d92f58f4a4f8ffb0253`. The current build and B70 experiment are recorded in
 > [Fork build check](#fork-build-check-2026-10-07). Earlier versions and community measurements below retain
@@ -272,6 +278,13 @@ startup choices differ, so these are whole-system references rather than a contr
 The relative gap is larger for prefill than decode. This suggests investigating single-card prefill first,
 but no local profile has yet identified the component responsible.
 
+**Superseded next-step guidance, 2026-10-08:** prefill profiling and the transfer-queue
+experiment below are complete. The user's current priority is client TPOT; the
+[decode campaign](../bench/results/2026-10-08-b70-tpot-roofline/README.md) preserves
+the complete decode event inventory, exact GR chain shapes and actual expert
+grouping. Community reports above provide engine throughput, not matched client
+TTFT/TPOT, so they cannot establish the new token-interval speedup.
+
 [The Intel port author's B70 record](INTEL.md) reports original IQ2_XS decode at 58.6 / 64.2 tok/s after
 19 / 2,184 input tokens. It is useful context for this fork's roughly 67 tok/s, but uses different prompts and
 port revisions. The often-cited B70 70-78 tok/s figures are Coder IQ1_M, so they are excluded from this IQ2_XS
@@ -389,3 +402,52 @@ This is a separate profile, not another performance sample or proof of a CPU-bou
 The result folder includes the captured request bodies and timestamp/correlation drivers. The drivers
 use the same container mounts (`/src/Strata`, read-only `/models/Strata`, writable `/artifacts`) and
 per-arm configuration files. Failed profile/startup attempts remain preserved in the raw artifact root.
+
+## Decode roofs and TPOT tuning (2026-10-08)
+
+The same single B70, IQ2_XS weights, fresh 32K/256 requests, INT8 KV, fixed cache
+and MTP policy are used. Client TTFT, client TPOT, IPC-arrival TPOT and engine
+average decode time remain separate. Measured standalone roofs are 530.209 GB/s
+for device copy, 560.336 GB/s for device read, 17.985 GB/s for mapped-host useful
+read, 22.785 TFLOP/s for FP32 SIMD FMA and 45.612 TOP/s for INT8 SIMD dp4a.
+XMX throughput is not the compute roof for these decode paths.
+
+The complete decode trace identifies dense MMVQ (29.12%), GR (16.11%), expert
+gate/up (15.73%) and down (11.21%) as leading families in the same capture.
+All 10,295 GR up events have exact producer-chain/shape bindings. The separate
+actual routing audit validates 4,896 plans, quantization formats and host/device
+placement. Cached native-graph replay prevents automatic assignment of every
+device event to a CPU wrapper; missing per-event roofs remain explicit.
+
+Read-only Sysman byte counters are available even though VTune Metrics Discovery
+was unavailable. The physical-counter streaming relaxation yields about 4.95
+ms/token, versus observed TPOT near 14.57 ms. This is a bandwidth reference under
+optimistic assumptions, **not attainable TPOT or proven recoverable headroom**.
+The exact GR weight-only floor similarly omits nonlinear and reduction costs.
+
+Static-T and SG16 candidates were rejected and removed from production; their
+source and results are archived. Optional GR lo preparation once observed a
+0.344% isolated TPOT improvement, with no valid TTFT gain claim because TTFT
+baseline drift was 2.873%. Optional IQ2_XXS shared weight preparation observed
+a 0.250% isolated TPOT improvement, three paired wins and baseline drift -0.031%.
+Its pretrial model counts 23.564% fewer preparation passes in a format accounting
+for only 3.801% of device time; the unknown preparation cost fraction is retained
+as sensitivity scenarios. No theoretical gap is presented as a measured speedup.
+
+All builds and tests remain inside omix, with host weights mounted read-only.
+Legacy defaults and project versions are preserved. The
+[campaign record](../bench/results/2026-10-08-b70-tpot-roofline/README.md) contains
+frozen plans, raw-artifact hashes, negative results, paired deltas, output checks
+and reproduction instructions. These are three-sample development comparisons,
+not formal acceptance or a claim for other models, shapes or GPUs.
+
+The final normal-binary comparison measures both optional changes together:
+client TPOT **14.559223 → 14.486293 ms/token (-0.501%)**, with three paired wins
+and baseline drift -0.059%. IPC TPOT improves 0.504%; TTFT stays near 31.965 s.
+All outputs, cache capacity and draft offered/accepted counts match both baselines.
+This is a small local decode improvement. Select it with
+`STRATA_SYCL_GR_LO_ONCE=1 STRATA_SYCL_EXPERT_MULTI16=1`, retaining the four
+prefill settings from the previous campaign and a normal trace-OFF build.
+Both new flags default off; the expert change applies only to format-16 grouped
+GU at eight lanes per row, and its component micro has a T=1 regression.
+[Final B/C/B evidence](../bench/results/2026-10-08-b70-tpot-roofline/final-bcb-summary.json).

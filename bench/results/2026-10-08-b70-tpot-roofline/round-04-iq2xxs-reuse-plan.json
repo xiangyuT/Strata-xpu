@@ -1,0 +1,34 @@
+{
+  "candidate": "IQ2_XXS (type16) shared weight preparation for two/four grouped entries",
+  "evidence_class": "development_performance_comparison",
+  "reason": "Real routing has n2=4665,n3=1626,n4=521 type16groups; currentMulti16 missing, so each entry recomputes identical decoded weights/signs/scale. ExistingMultiformats22/42 already shareprepare.",
+  "model": {
+    "GU_type": 16,
+    "groups_by_entries": {
+      "1": 17038,
+      "3": 1626,
+      "2": 4665,
+      "4": 521
+    },
+    "observed_entries": 33330,
+    "baseline_prepare_passes": 33330,
+    "two_four_entry_reuse_prepare_passes": 25476,
+    "prepare_work_reduction_fraction": 0.23564356435643563,
+    "same_capture_GU_device_ms": 140.4529453125,
+    "same_capture_GU_device_share_pct": 3.8012546815613573,
+    "optimistic_proportional_prepare_bound_ms": 33.09683265779702,
+    "sensitivity_ms_if_prepare_fraction": {
+      "0.25": 8.274208164449256,
+      "0.5": 16.54841632889851,
+      "0.75": 24.822624493347767,
+      "1.0": 33.09683265779702
+    },
+    "causal_fraction_known": false
+  },
+  "domain": "native grouped GU format16, unchanged row/activation strides, LN8/SIMD32 default; all other formats/routes/defaults preserved",
+  "semantics": "Hoist only weight grid/sign/unpack intoMulti16; keep int dot result, integer multiply/8 truncation, FP32scale multiply and lane-reduction order exactly. Groups1remain originalsingle-entrydot, tails use existing2/4chunkpattern.",
+  "correctness": "realGGUF IQ2_XXS weights and heterogeneous grouped plans, entries1..8, guards, original/CandidateGU and finaloutputs byteexact; actualworkflow exactresponses",
+  "micro": "Native graph replay, actual grouping distributions and realweightsets;2s/1000callwarm+3s/2000calltimed, B/C/B andchunkdrift; preserve placement and mixedgroups; no directAPIprojection",
+  "stop": "Stop at bytefailure or nonrepeatable/marginal graph micro; noE2E onfailedgate",
+  "estimate_boundary": "At most about23.6% of type16prepare work can be removed; type16GU3.8% ofdevice cost. Prepare fraction unknown. Conservative expected-saving range must come from nativegraphmicro, not the overallroofgap."
+}

@@ -1,0 +1,102 @@
+{
+  "route_counts": [
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_norm_split_k>[SIMD32 {4; 1; 1} {256; 1; 1}]",
+      "calls": 2439,
+      "device_ms": 20.804754000000052
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::{lambda(sycl::_V1::handler&)#3}::operator()(sycl::_V1::handler&) const::gr_down_sliced_k>[SIMD32 {80; 1; 1} {256; 1; 1}]",
+      "calls": 10295,
+      "device_ms": 202.92456900000272
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_down_reduce_lo_once_k>[SIMD32 {3; 1; 1} {128; 1; 1}]",
+      "calls": 2439,
+      "device_ms": 9.059624000000225
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gr_up_prepared_lo(strata::kernels::(anonymous namespace)::GrMulti const&, sycl::_V1::queue*)::gr_up_prepared_lo_kernel>[SIMD32 {160; 1; 1} {256; 1; 1}]",
+      "calls": 10295,
+      "device_ms": 246.0553580000018
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::native_gr_post(float const*, float const*, float const*, float*, int, int, void*)::{lambda(sycl::_V1::handler&)#1}::operator()(sycl::_V1::handler&) const::post_a7f844>[SIMD32 {40; 1; 1} {256; 1; 1}]",
+      "calls": 853,
+      "device_ms": 1.2546050000000033
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::native_gr_rms_norm_weighted(float const*, float const*, float*, int, int, float, void*)::weighted_rms_norm_11a6fe, dpct_kernel_scalar<1024> >[SIMD32 {4; 1; 1} {1024; 1; 1}]",
+      "calls": 1457,
+      "device_ms": 4.209935999999993
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::native_gr_down_silu(float*, int, int, void*)::{lambda(sycl::_V1::handler&)#1}::operator()(sycl::_V1::handler&) const::down_silu_24f4fb>[SIMD32 {2; 1; 1} {256; 1; 1}]",
+      "calls": 551,
+      "device_ms": 0.3929360000000004
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::native_gr_pre_gated(float const*, float*, float*, int, int, bool, void*)::{lambda(sycl::_V1::handler&)#2}::operator()(sycl::_V1::handler&) const::pre_gated_4a043d, dpct_kernel_scalar<0> >[SIMD32 {10; 1; 1} {256; 1; 1}]",
+      "calls": 551,
+      "device_ms": 0.9590330000000006
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_norm_split_k>[SIMD32 {16; 1; 1} {256; 1; 1}]",
+      "calls": 5140,
+      "device_ms": 44.54498699999822
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_down_reduce_lo_once_k>[SIMD32 {11; 1; 1} {128; 1; 1}]",
+      "calls": 5140,
+      "device_ms": 20.915964000000773
+    },
+    {
+      "kernel": "zeCommandListAppendMemoryCopy(D2D)[40960]",
+      "calls": 302,
+      "device_ms": 0.41763499999999987
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_norm_split_k>[SIMD32 {12; 1; 1} {256; 1; 1}]",
+      "calls": 1358,
+      "device_ms": 11.736166000000036
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_down_reduce_lo_once_k>[SIMD32 {8; 1; 1} {128; 1; 1}]",
+      "calls": 1358,
+      "device_ms": 5.58164700000001
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_norm_split_k>[SIMD32 {8; 1; 1} {256; 1; 1}]",
+      "calls": 1358,
+      "device_ms": 11.620594000000043
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::fused_gr_read_multi(strata::kernels::FusedGrArgs const*, int, float*, void*, unsigned long long*, int)::gr_down_reduce_lo_once_k>[SIMD32 {6; 1; 1} {128; 1; 1}]",
+      "calls": 1358,
+      "device_ms": 5.381620999999986
+    }
+  ],
+  "up_by_T": {
+    "1": {
+      "calls": 2439,
+      "up_mean_us": 20.520809758097105,
+      "chain_mean_us": 50.11974907749084
+    },
+    "4": {
+      "calls": 5140,
+      "up_mean_us": 25.637394941634923,
+      "chain_mean_us": 59.53060603112812
+    },
+    "3": {
+      "calls": 1358,
+      "up_mean_us": 24.245722385861626,
+      "chain_mean_us": 56.716525773196004
+    },
+    "2": {
+      "calls": 1358,
+      "up_mean_us": 23.050958762886683,
+      "chain_mean_us": 54.03156038291619
+    }
+  },
+  "interpretation": "Instrumented route check only; matched native graph sidecar still required to explain projection gap."
+}

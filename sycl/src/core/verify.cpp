@@ -2,6 +2,7 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/core/verify.hpp"
+#include "strata/workload_trace.hpp"
 #if defined(_WIN32)
 #include <intrin.h>
 #endif
@@ -41,6 +42,7 @@
 #include <algorithm>
 #include <atomic>
 #include <map>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -54,6 +56,31 @@
 
 namespace strata::core {
 namespace {
+
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+// Diagnostic graph copies preserve the actual per-layer plan before its shared
+// scratch is reused. CPU reads them only after the existing end-window wait.
+struct RoutingAudit {
+    int32_t* snapshots = nullptr;
+    FILE* output = nullptr;
+    int64_t words = 0, layers = 0;
+    sycl::queue* queue = nullptr;
+    RoutingAudit(int64_t nwords, int64_t nlayers, sycl::queue* stream, const char* path)
+        : words(nwords), layers(nlayers), queue(stream) {
+        output = std::fopen(path, "a");
+        if (!output) throw std::runtime_error("routing audit output unavailable");
+        snapshots = sycl::malloc_host<int32_t>((size_t)words * layers * 2, *queue);
+        if (!snapshots) { std::fclose(output); output = nullptr; throw std::bad_alloc(); }
+        std::memset(snapshots, 0, (size_t)words * layers * 2 * sizeof(int32_t));
+    }
+    ~RoutingAudit() {
+        if (snapshots) { try { sycl::free(snapshots, *queue); } catch (...) {} }
+        if (output) std::fclose(output);
+    }
+    int32_t* slot(int64_t layer, int group) { return snapshots + (size_t)(layer * 2 + group) * words; }
+};
+std::map<const Verifier*, std::unique_ptr<RoutingAudit>> routing_audits;
+#endif
 
 constexpr float EPS = 1e-6f;
 using Clock = std::chrono::steady_clock;
@@ -287,6 +314,9 @@ Verifier::~Verifier() try {
     for (auto& e : exec_)
         if (e) delete (e);
     if (commit_exec_) delete (commit_exec_);
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+    routing_audits.erase(this);
+#endif
     if (cs_) dpct::get_current_device().destroy_queue(cs_);
     if (copy_) {
         copy_->wait(); dpct::get_current_device().destroy_queue(copy_);
@@ -533,6 +563,12 @@ bool Verifier::init(const WeightTable &wt, const ModelGeometry &g,
         */
         if (!ok2) {; device_plan_ = false; }
     }
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+    if (const char* audit = std::getenv("STRATA_SYCL_ROUTING_AUDIT_FILE"); audit && *audit) {
+        if (!device_plan_) throw std::runtime_error("routing audit requires device planning");
+        routing_audits[this] = std::make_unique<RoutingAudit>(plan_i32_, g.n_layers, cs_, audit);
+    }
+#endif
     if (std::getenv("STRATA_VERIFY_DEBUG") != nullptr) {   // SYCL port: the per-layer residual ladder (token 0)
         dbgR_ = (float*) sycl::malloc_device((size_t) g.n_layers * g.n_embd * 4, dpct::get_in_order_queue());
         dbgM_ = (float*) sycl::malloc_device((size_t) g.n_layers * g.n_embd * 4, dpct::get_in_order_queue());
@@ -639,6 +675,10 @@ bool Verifier::record_window(int T, dpct::queue_ptr cs, std::string &err) {
     // ---------------------------------------------------------------- pre(l, group): up to the ring
     auto pre = [&](int64_t l, int grp) -> bool {
         const int tb = tb_[grp], te = te_[grp], n = te - tb;
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+        strata::workload_trace::ContextGuard layer_context(strata::workload_trace::context.position, n, l);
+#endif
+        strata::workload_trace::Scope layer_trace("decode.layer.pre", cs, n, N);
         stamp(l, 0, grp);
         const LayerView v(wt, l);
         const char* pfx[2] = {"hc_attn_", "hc_ffn_"};
@@ -672,6 +712,7 @@ bool Verifier::record_window(int T, dpct::queue_ptr cs, std::string &err) {
             pending = false;
         }
         auto gr_read_group = [&](int half, bool apply, float* inj_prev, float* inj_out) {
+            strata::workload_trace::Scope gr_trace("decode.gr_read", cs, n, HC * N, g.hc_lr, HC, N, half);
             FusedGrArgs fa[kFusedGrMaxT];
             for (int t = tb; t < te; ++t) {
                 FusedGrArgs& a = fa[t - tb];
@@ -932,6 +973,10 @@ bool Verifier::record_window(int T, dpct::queue_ptr cs, std::string &err) {
     // ---------------------------------------------------------------- post(l, group): experts, combine
     auto post = [&](int64_t l, int grp) -> bool {
         const int tb = tb_[grp], te = te_[grp], n = te - tb;
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+        strata::workload_trace::ContextGuard layer_context(strata::workload_trace::context.position, n, l);
+#endif
+        strata::workload_trace::Scope layer_trace("decode.layer.post", cs, n, N);
         const uint32_t ring = (uint32_t) ((l - lb_) * G + grp + 1);
         const int64_t cap = (int64_t) n * K, capx = (int64_t) max_t_ * K;
         int32_t* pl = plan_ + (size_t) grp * (size_t) (plan_i32_ + 16);
@@ -1007,6 +1052,10 @@ bool Verifier::record_window(int T, dpct::queue_ptr cs, std::string &err) {
             if (!moe_combine_parts(g, l, K, mb, parts_ + (size_t) t * K * N, bo_ + t * N, cs, err)) return false;
         }
         stamp(l, 24, grp);
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+        if (auto audit = routing_audits.find(this); audit != routing_audits.end())
+            cs->memcpy(audit->second->slot(l, grp), pl, (size_t)plan_i32_ * sizeof(int32_t));
+#endif
         if (l == g.n_layers - 1) {
             for (int t = tb; t < te; ++t) gr_write(Rt(t), bo_ + t * N, inj2_ + t * HC, gs, Rt(t), cs);
             if (cvec().covers(l)) cvec_apply(Rt(tb), l, n, HC * N, nullptr, 0, nullptr, 0, false, cs);
@@ -1472,6 +1521,51 @@ bool Verifier::run(int T, const int32_t *tokens, int64_t pos0, PoolMultiFn pool,
         err = std::string("verify: ") + dpct::get_error_string_dummy(se);
         return false;
     }
+#ifdef STRATA_SYCL_WORKLOAD_TRACE
+    if (auto found = routing_audits.find(this); found != routing_audits.end()) {
+        auto& audit = *found->second;
+        const int64_t capx = (int64_t)max_t_ * ss.k;
+        const int64_t ptr_off = ((4 + capx + 1 + 2 * capx) + 1) & ~1ll;
+        const auto& layout = strata::kernels::cpu::expert_layout();
+        if (!layout.native) throw std::runtime_error("routing audit requires native expert layout");
+        for (int64_t layer = lb_; layer < le_; ++layer) for (int group = 0; group < G; ++group) {
+            const int32_t* data = audit.slot(layer, group);
+            const int32_t* starts = data + 4;
+            const int32_t* dst = starts + capx + 1;
+            const int32_t* tok = dst + capx;
+            const auto* pointers = reinterpret_cast<const unsigned long long*>(data + ptr_off);
+            const int n = gte[group] - gtb[group], expected = n * (int)ss.k;
+            if (data[0] < 0 || data[0] > expected || data[1] != expected || data[2] != 0 || starts[0] != 0 || starts[data[0]] != expected)
+                throw std::runtime_error("routing audit: incomplete resident plan");
+            const auto& format = layout.fmt[(size_t)layer];
+            std::vector<bool> seen((size_t)expected, false);
+            std::fprintf(audit.output, "{\"kind\":\"expert_plan\",\"raw_ns\":%lld,\"position\":%lld,\"T\":%d,\"layer\":%lld,\"group\":%d,\"rows\":%d,\"GU_type\":%d,\"down_type\":%d,\"n_embd\":%lld,\"n_ff\":%lld,\"gu_row_bytes\":%llu,\"down_row_bytes\":%llu,\"groups\":%d,\"entries\":%d,\"pcie_plan_groups\":%d,\"plans\":[",
+                (long long)strata::workload_trace::trace_ns(), (long long)pos0, T, (long long)layer, group, n,
+                format.gu_type, format.d_type, (long long)format.n_embd, (long long)format.n_ff,
+                (unsigned long long)format.gu_row, (unsigned long long)format.d_row, data[0], data[1], data[2]);
+            for (int index = 0; index < data[0]; ++index) {
+                const int begin = starts[index], end = starts[index + 1];
+                if (begin < 0 || end <= begin || end > expected || end - begin > n)
+                    throw std::runtime_error("routing audit: invalid group range");
+                const auto allocation = sycl::get_pointer_type(reinterpret_cast<const void*>(pointers[index]), cs_->get_context());
+                const char* residency = allocation == sycl::usm::alloc::device ? "device" : allocation == sycl::usm::alloc::host ? "host" : allocation == sycl::usm::alloc::shared ? "shared" : "unknown";
+                std::fprintf(audit.output, "%s{\"count\":%d,\"allocation\":\"%s\",\"pointer\":%llu,\"dst\":[", index ? "," : "", end - begin, residency, pointers[index]);
+                for (int e = begin; e < end; ++e) {
+                    if (dst[e] < 0 || dst[e] >= expected || seen[(size_t)dst[e]] || tok[e] < 0 || tok[e] >= T)
+                        throw std::runtime_error("routing audit: invalid entry mapping");
+                    seen[(size_t)dst[e]] = true;
+                    std::fprintf(audit.output, "%s%d", e == begin ? "" : ",", dst[e]);
+                }
+                std::fprintf(audit.output, "],\"tok\":[");
+                for (int e = begin; e < end; ++e) std::fprintf(audit.output, "%s%d", e == begin ? "" : ",", tok[e]);
+                std::fprintf(audit.output, "]}");
+            }
+            if (std::find(seen.begin(), seen.end(), false) != seen.end()) throw std::runtime_error("routing audit: missing entry");
+            std::fprintf(audit.output, "]}\n");
+        }
+        std::fflush(audit.output);
+    }
+#endif
     if (no_host && std::getenv("STRATA_VERIFY_DEBUG") != nullptr) {   // SYCL port: what the window left behind
         const int Gd = groups_[T] > 0 ? groups_[T] : 1;
         std::vector<uint32_t> sk((size_t) Gd, 0);

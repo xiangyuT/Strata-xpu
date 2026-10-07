@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec /tools/unitrace/bin/unitrace --system-time --chrome-kernel-logging --chrome-event-buffer-size 100000 --include-kernels native_,mmvq_multi_kernel,gr_,attn_chunk_kernel,attn_merge_kernel,gdn_step_norm_multi_kernel,bf16_f32_mmvf_multi_kernel --output-dir-path /artifacts/tpot-20261007-r81j21y4/03-graph-contract-trace --teardown-on-signal 15 /artifacts/tpot-20261007-r81j21y4/bin/graph-profile/strata "$@"

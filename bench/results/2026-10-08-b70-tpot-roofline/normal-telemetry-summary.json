@@ -1,0 +1,99 @@
+{
+  "evidence_class": "capacity_diagnostic",
+  "performance_claim": false,
+  "source": "02-normal-telemetry/telemetry.jsonl",
+  "clock_alignment": "External CLOCK_MONOTONIC_RAW read midpoints; piecewise linear cumulative-counter interpolation at IPC first/last token arrivals.",
+  "samples": [
+    {
+      "label": "sample-1",
+      "engine_generated": 256,
+      "ipc_first_last_s": 3.742519536,
+      "client_tpot_ms": 14.676308156192011,
+      "boundary_sample_spacing_ms": [
+        102.98438,
+        103.0923505
+      ],
+      "physical_bytes": {
+        "pcie_rx": 9223918891.15625,
+        "pcie_tx": 2175154484.546875,
+        "dram_read": 614625242729.0,
+        "dram_write": 99260549749.25
+      },
+      "average_GB_per_s": {
+        "pcie_rx": 2.464628120823322,
+        "pcie_tx": 0.5812005691950715,
+        "dram_read": 164.22766449628494,
+        "dram_write": 26.522386535178796
+      },
+      "physical_bytes_per_token_interval": {
+        "pcie_rx": 36172230.945710786,
+        "pcie_tx": 8530017.586458333,
+        "dram_read": 2410295069.5254903,
+        "dram_write": 389257057.8401961
+      }
+    },
+    {
+      "label": "sample-2",
+      "engine_generated": 256,
+      "ipc_first_last_s": 3.649802818,
+      "client_tpot_ms": 14.313072208132521,
+      "boundary_sample_spacing_ms": [
+        103.062465,
+        103.102702
+      ],
+      "physical_bytes": {
+        "pcie_rx": 10010025320.976562,
+        "pcie_tx": 2351280716.703125,
+        "dram_read": 612210999905.0,
+        "dram_write": 98194962055.5
+      },
+      "average_GB_per_s": {
+        "pcie_rx": 2.7426208538196604,
+        "pcie_tx": 0.6442213001500086,
+        "dram_read": 167.73810269577146,
+        "dram_write": 26.90418276056578
+      },
+      "physical_bytes_per_token_interval": {
+        "pcie_rx": 39255001.25873162,
+        "pcie_tx": 9220708.692953432,
+        "dram_read": 2400827450.607843,
+        "dram_write": 385078282.57058823
+      }
+    },
+    {
+      "label": "sample-3",
+      "engine_generated": 256,
+      "ipc_first_last_s": 3.752011061,
+      "client_tpot_ms": 14.713702635730014,
+      "boundary_sample_spacing_ms": [
+        102.86305,
+        102.910928
+      ],
+      "physical_bytes": {
+        "pcie_rx": 10418513943.859375,
+        "pcie_tx": 2408622141.5664062,
+        "dram_read": 615948366362.0,
+        "dram_write": 100332679087.25
+      },
+      "average_GB_per_s": {
+        "pcie_rx": 2.7767812446380673,
+        "pcie_tx": 0.6419549682575965,
+        "dram_read": 164.1648588844605,
+        "dram_write": 26.74104032638671
+      },
+      "physical_bytes_per_token_interval": {
+        "pcie_rx": 40856917.42689951,
+        "pcie_tx": 9445577.025750613,
+        "dram_read": 2415483789.654902,
+        "dram_write": 393461486.6166667
+      }
+    }
+  ],
+  "limits": [
+    "Whole-device byte counters; no kernel-by-kernel attribution.",
+    "First/last IPC arrival differ from engine-producer boundaries by reader scheduling.",
+    "100ms sampling and 1-3ms reads introduce endpoint interpolation error.",
+    "Observed physical traffic differs from API compulsory useful traffic; do not mix the two.",
+    "No inferred absence of host-mapped loads from CPU expert counters."
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "evidence_class": "development_performance_comparison",
+  "correctness": {
+    "kind": "correctness",
+    "cases": 512,
+    "real_weight_sets": 8,
+    "T_domain": "1..8",
+    "pending_write": "on/off",
+    "patterns": 4,
+    "outputs": "R,lo,rs,inject,mixed,xn",
+    "result": "byte-exact,finite,guards passed"
+  },
+  "micro": {
+    "1": {
+      "paired_baseline_us": 44.632569000000004,
+      "candidate_us": 44.724285,
+      "change_pct": 0.20549119635036028,
+      "baseline_drift_pct": -0.055710599651614956,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": -0.0703791313090063
+        },
+        "candidate": {
+          "chunks": 20,
+          "signed_drift_pct": -0.06520526577253882
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": -0.12518249306826545
+        }
+      },
+      "trace_calls": 2439
+    },
+    "2": {
+      "paired_baseline_us": 56.645396,
+      "candidate_us": 56.292605,
+      "change_pct": -0.6228061323818701,
+      "baseline_drift_pct": -0.16519726171260185,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": 0.002717599181623065
+        },
+        "candidate": {
+          "chunks": 21,
+          "signed_drift_pct": -0.0078689315222924
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": -0.0013312482856298047
+        }
+      },
+      "trace_calls": 1358
+    },
+    "3": {
+      "paired_baseline_us": 61.830378499999995,
+      "candidate_us": 61.145595,
+      "change_pct": -1.1075195019224937,
+      "baseline_drift_pct": -0.06946759339273578,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": -0.08068727191977709
+        },
+        "candidate": {
+          "chunks": 21,
+          "signed_drift_pct": 0.06450887070046374
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": -0.06414468251034755
+        }
+      },
+      "trace_calls": 1358
+    },
+    "4": {
+      "paired_baseline_us": 69.60119549999999,
+      "candidate_us": 68.903269,
+      "change_pct": -1.002750735797342,
+      "baseline_drift_pct": -0.05382223087810889,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": -0.03930641781763056
+        },
+        "candidate": {
+          "chunks": 21,
+          "signed_drift_pct": -0.01271254946109135
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": 0.015446338524438552
+        }
+      },
+      "trace_calls": 5140
+    },
+    "6": {
+      "paired_baseline_us": 82.559003,
+      "candidate_us": 82.557251,
+      "change_pct": -0.002122118650116356,
+      "baseline_drift_pct": 0.06210093720144805,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": 0.0008612312316857995
+        },
+        "candidate": {
+          "chunks": 21,
+          "signed_drift_pct": -0.03876352505343128
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": 0.00944537905600562
+        }
+      },
+      "trace_calls": 0
+    },
+    "8": {
+      "paired_baseline_us": 94.87932799999999,
+      "candidate_us": 94.736939,
+      "change_pct": -0.15007378635731872,
+      "baseline_drift_pct": 0.12055408306825832,
+      "chunk_drift": {
+        "baseline-before": {
+          "chunks": 21,
+          "signed_drift_pct": -0.05844240478422025
+        },
+        "candidate": {
+          "chunks": 21,
+          "signed_drift_pct": 0.04550550139166276
+        },
+        "baseline-after": {
+          "chunks": 21,
+          "signed_drift_pct": -0.02604690596585968
+        }
+      },
+      "trace_calls": 0
+    }
+  },
+  "projected_GR_API_saving_ms_in_traced_window": 4.772673056999962,
+  "projection_limits": "Micro full-API call deltas weighted by exact GR call counts; trace includes a different instrumented request boundary and altered MTP schedule. Not a measured TPOT improvement.",
+  "decision": "not selected for E2E: main T3/T4 API gain about1%, T1 slightly regresses, projected only about0.13% TPOT; retain negative/marginal boundary and pursue an actual duplicated operation instead of an SLM-size sweep"
+}

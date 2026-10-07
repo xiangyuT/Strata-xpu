@@ -1,0 +1,11 @@
+{
+  "evidence_class": "capacity_diagnostic",
+  "performance_claim": false,
+  "purpose": "Verify actual model dispatches new IQ2_XXS native GU route and geometry; timings not mixed with unprofiled B/C/B or prior differently instrumented captures",
+  "binary_sha256": "1b260dc85a0c14349f41a1f3e037356cef7f63a572197c8d8d63da76e7fd6032",
+  "source": "final-source-identity.json",
+  "warmups": 1,
+  "samples": 1,
+  "unitrace_filter": "native_gu_",
+  "fixture": "unchanged32K/256,cache18,609,KV/MTP same"
+}

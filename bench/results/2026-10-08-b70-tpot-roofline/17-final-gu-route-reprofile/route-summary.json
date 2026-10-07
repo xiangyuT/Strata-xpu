@@ -1,0 +1,91 @@
+{
+  "evidence_class": "capacity_diagnostic",
+  "performance_claim": false,
+  "binary_sha256": "1b260dc85a0c14349f41a1f3e037356cef7f63a572197c8d8d63da76e7fd6032",
+  "ROI": "Measured request IPC send-to-DONE, monotonic RAW; excluded startup and warmups",
+  "window_start_us": 1782564280822.286,
+  "window_end_us": 1782601473540.887,
+  "events": 9792,
+  "new_iq2xxs_route_calls": 2244,
+  "legacy_format16_route_calls": 0,
+  "kernels": [
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<22, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<22>, dpct_kernel_scalar<8> >[SIMD32 {40; 10; 1} {256; 1; 1}]",
+      "calls": 714,
+      "device_us": 42183.23099999976
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<22, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<22>, dpct_kernel_scalar<8> >[SIMD32 {40; 4; 1} {256; 1; 1}]",
+      "calls": 3468,
+      "device_us": 1748.1309999999537
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_iq2xxs_reuse(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_iq2xxs_reuse_kernel>[SIMD32 {40; 10; 1} {256; 1; 1}]",
+      "calls": 231,
+      "device_us": 13477.400999999994
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_iq2xxs_reuse(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_iq2xxs_reuse_kernel>[SIMD32 {40; 4; 1} {256; 1; 1}]",
+      "calls": 1122,
+      "device_us": 564.2579999999932
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<29, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<29>, dpct_kernel_scalar<8> >[SIMD32 {40; 10; 1} {256; 1; 1}]",
+      "calls": 63,
+      "device_us": 2868.4149999999995
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<29, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<29>, dpct_kernel_scalar<8> >[SIMD32 {40; 4; 1} {256; 1; 1}]",
+      "calls": 306,
+      "device_us": 149.25199999999984
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<22, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<22>, dpct_kernel_scalar<8> >[SIMD32 {40; 40; 1} {256; 1; 1}]",
+      "calls": 1802,
+      "device_us": 271195.087
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_iq2xxs_reuse(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_iq2xxs_reuse_kernel>[SIMD32 {40; 40; 1} {256; 1; 1}]",
+      "calls": 583,
+      "device_us": 86128.51200000006
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<29, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<29>, dpct_kernel_scalar<8> >[SIMD32 {40; 40; 1} {256; 1; 1}]",
+      "calls": 159,
+      "device_us": 21979.520000000004
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<22, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<22>, dpct_kernel_scalar<8> >[SIMD32 {40; 30; 1} {256; 1; 1}]",
+      "calls": 476,
+      "device_us": 51306.04499999969
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_iq2xxs_reuse(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_iq2xxs_reuse_kernel>[SIMD32 {40; 30; 1} {256; 1; 1}]",
+      "calls": 154,
+      "device_us": 15787.642999999995
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<29, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<29>, dpct_kernel_scalar<8> >[SIMD32 {40; 30; 1} {256; 1; 1}]",
+      "calls": 42,
+      "device_us": 3701.2340000000004
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<22, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<22>, dpct_kernel_scalar<8> >[SIMD32 {40; 20; 1} {256; 1; 1}]",
+      "calls": 476,
+      "device_us": 36937.505999999936
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_iq2xxs_reuse(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_iq2xxs_reuse_kernel>[SIMD32 {40; 20; 1} {256; 1; 1}]",
+      "calls": 154,
+      "device_us": 11634.317
+    },
+    {
+      "kernel": "dpct_kernel_name<strata::kernels::(anonymous namespace)::launch_gu_port<29, 8>(unsigned int, sycl::_V1::queue*, unsigned long long const*, int const*, int const*, int const*, block_q8_1 const*, strata::kernels::NativeExpertLayout const&, float*, float*)::native_gu_port, dpct_kernel_scalar<29>, dpct_kernel_scalar<8> >[SIMD32 {40; 20; 1} {256; 1; 1}]",
+      "calls": 42,
+      "device_us": 2704.8759999999993
+    }
+  ],
+  "output_equals_normal": true,
+  "raw_trace_sha256": "450f7ee798271a393fc4227597195cf499b5075da426275bb46f06ed559e498d",
+  "limits": "Filtered device route diagnostic, timings not compared with prior full API capture or normal B/C/B; includes empty grid-Y4 launch calls. Host USM loads do not appear as explicit copies."
+}

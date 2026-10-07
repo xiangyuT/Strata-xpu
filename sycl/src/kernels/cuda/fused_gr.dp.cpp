@@ -5,6 +5,7 @@
 #include <sycl/sycl.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_queue.hpp"
+#include "strata/workload_trace.hpp"
 #include "strata/core/emulate.hpp"
 #include "strata/kernels/fused_gr.hpp"
 #include "strata/kernels/bf16_bits.hpp"
@@ -568,6 +569,7 @@ __dpct_inline__ void gr_down_sliced_kernel(GrMulti m, float* tile) {
         }
     }
 }
+template<bool PrepareLo = false>
 __dpct_inline__ void gr_down_reduce_kernel(GrMulti m) {
     auto item = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
     const int i = (int) item.get_global_id(2);
@@ -576,7 +578,16 @@ __dpct_inline__ void gr_down_reduce_kernel(GrMulti m) {
     if (r >= LR && m.a[0].w_inject == nullptr) return;
     float x = 0.0f;
     for (int sl = 0; sl < GRS_SLICES; ++sl) x += m.part2[((size_t) sl * kFusedGrMaxT + k) * GRS_ROWS + r];
-    if (r < LR) m.part[(size_t) k * LR + r] = x;   // split 0
+    if (r < LR) {
+        m.part[(size_t) k * LR + r] = x;   // split 0, retained in both routes
+        if constexpr (PrepareLo) {
+            // Match up's zero-initialized split-0 sum, including signed zero.
+            float value = 0.0f;
+            value += x;
+            value /= (float) HC;
+            m.a[k].lo[r] = value / (1.0f + sycl::native::exp(-value));
+        }
+    }
     else m.a[k].inject_out[r - LR] = x;
 }
 bool gr_down_sliced() {   // default (gr_bench: GR read 108.6 -> 76.5 us at 6 tokens); STRATA_GR_DOWN_SLICED=0: direct
@@ -609,6 +620,7 @@ gr_up_multi_kernel exceeds 128 bytes and may cause high register pressure.
 Consult with your hardware vendor to find the total register size available and
 adjust the code, or use smaller sub-group size to avoid high register pressure.
 */
+template<bool LoReady = false>
 __dpct_inline__ void gr_up_multi_kernel(GrMulti m) {
     auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
 auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
@@ -623,13 +635,17 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
 #pragma unroll
     for (int i = t; i < T * LR; i += THREADS) {   // the down kernel's partial sums, in split order, then silu
         const int k = i / LR, r = i % LR;
-        float x = 0.0f;
+        if constexpr (LoReady) {
+            lo[k][r] = m.a[k].lo[r];
+        } else {
+            float x = 0.0f;
 #pragma unroll
-        for (int sp = 0; sp < DOWN_SPLIT; ++sp) if (sp < m.nsplit) x += m.part[((size_t) sp * kFusedGrMaxT + k) * LR + r];
-        x /= (float) HC;
-        const float v = x / (1.0f + sycl::native::exp(-x));
-        lo[k][r] = v;
-        m.a[k].lo[r] = v;
+            for (int sp = 0; sp < DOWN_SPLIT; ++sp) if (sp < m.nsplit) x += m.part[((size_t) sp * kFusedGrMaxT + k) * LR + r];
+            x /= (float) HC;
+            const float v = x / (1.0f + sycl::native::exp(-x));
+            lo[k][r] = v;
+            m.a[k].lo[r] = v;
+        }
     }
     /*
     DPCT1065: Consider replacing sycl::nd_item::barrier() with
@@ -698,6 +714,18 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
     }
 }
 
+bool g_gr_lo_once = [] {
+    const char* value = std::getenv("STRATA_SYCL_GR_LO_ONCE");
+    return value && std::atoi(value) != 0;
+}();
+void launch_gr_up_prepared_lo(const GrMulti& m, dpct::queue_ptr stream) {
+    auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    stream->parallel_for<dpct_kernel_name<class gr_up_prepared_lo_kernel>>(
+        sycl::nd_range<3>(sycl::range(1, 1, UPM_BLOCKS) * sycl::range(1, 1, THREADS),
+                          sycl::range(1, 1, THREADS)), properties,
+        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_up_multi_kernel<true>(m); });
+}
 
 // ================================ hc read v3 (opt-in: STRATA_GR_V3=1) - two kernels, stream-split ================
 // The norm kernel runs on only T blocks (~16 us of pure latency per call) and `down` on 41 blocks (~280 GB/s).
@@ -1593,6 +1621,8 @@ std::atomic<int> g_variant[64];
 
 // one partials buffer per queue (the verifier's and the drafter's launches never share a queue; within a queue the
 // launches are ordered, and a graph capture records the pointer)
+void fused_gr_set_lo_once(bool enabled) { g_gr_lo_once = enabled; }
+
 static float* down_partials(sycl::queue* q) {
     static std::mutex mu;
     static std::unordered_map<sycl::queue*, float*> bufs;
@@ -1606,6 +1636,7 @@ static float* down_partials(sycl::queue* q) {
 
 bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, void* stream, unsigned long long* stamp_buf,
                          int stamp_i0) {
+    strata::workload_trace::Scope trace("decode.gr_read_api", stream, n_tok, D, LR, HC, N, 30);
     if (n_tok < 1 || n_tok > kFusedGrMaxT || xn_scratch == nullptr) {
         std::fprintf(stderr, "fused_gr_read_multi: invalid arguments\n");
         std::exit(1);
@@ -1790,6 +1821,7 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
         attr[dev] = true;
     }
     const int chunk_tok = (dev >= 0 && dev < 64 && chunk[dev]) ? chunk[dev] : kFusedGrMaxT;
+    const bool lo_once = g_gr_lo_once && gr_down_sliced();
     if (gr_down_sliced()) {
         m.part2 = slice_partials(st);
         m.nsplit = 1;
@@ -1802,9 +1834,15 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
                 });
         });
         const unsigned nred = unsigned((n_tok * GRS_ROWS + 127) / 128);
-        st->parallel_for<dpct_kernel_name<class gr_down_reduce_k>>(
-            sycl::nd_range<3>(sycl::range(1, 1, nred) * sycl::range(1, 1, 128), sycl::range(1, 1, 128)),
-            [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_down_reduce_kernel(m); });
+        if (lo_once) {
+            st->parallel_for<dpct_kernel_name<class gr_down_reduce_lo_once_k>>(
+                sycl::nd_range<3>(sycl::range(1, 1, nred) * sycl::range(1, 1, 128), sycl::range(1, 1, 128)),
+                [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_down_reduce_kernel<true>(m); });
+        } else {
+            st->parallel_for<dpct_kernel_name<class gr_down_reduce_k>>(
+                sycl::nd_range<3>(sycl::range(1, 1, nred) * sycl::range(1, 1, 128), sycl::range(1, 1, 128)),
+                [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_down_reduce_kernel(m); });
+        }
     } else if (gr_down_direct()) {
         st->parallel_for<dpct_kernel_name<class gr_down_multi_direct>>(
             sycl::nd_range<3>(sycl::range(1, 1, DOWN_BLOCKS * DOWN_SPLIT + 1) * sycl::range(1, 1, THREADS),
@@ -1860,7 +1898,9 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
         }
     }
     if (stamp_buf) gpu_stamp(stamp_buf, stamp_i0 + 1, stream);
-    {
+    if (lo_once) {
+        launch_gr_up_prepared_lo(m, st);
+    } else {
         auto exp_props = sycl::ext::oneapi::experimental::properties{
             sycl::ext::oneapi::experimental::use_root_sync};
 

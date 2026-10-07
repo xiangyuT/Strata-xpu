@@ -1,0 +1,28 @@
+{
+  "base_revision": "aeea0ab7334bca3db4ef1f814ce4275d4d10c991",
+  "branch": "dev/b70-iq2xs-sycl-20261007",
+  "files_sha256": {
+    "sycl/CMakeLists.txt": "278fef56fee03964f8e041f252a7bcc018db92a16e057932d49e040ff283cda0",
+    "sycl/include/strata/workload_trace.hpp": "aea5be9a446c86270978760b57097a20b8aab6461dee7804bf52938438ae353c",
+    "sycl/include/strata/kernels/gr_tuning.hpp": "275f923f4e7382aab2d79fd4a64c134f04ceb586bda862632ebb783f0aecf0d3",
+    "sycl/include/strata/kernels/iq_tuning.hpp": "1b226915425ac4797b126023a05cf42dbd166d6e04694e7b5a246f5a4359ea99",
+    "sycl/src/core/verify.cpp": "bcb3c978d413e3e94da547a27fee4a84fe9fd53327982f1726a88957202bb3a7",
+    "sycl/src/core/mtp.cpp": "23bfcbaa5c618748679328aebf6b80a5a4cccd7ddfb55e54c03f106e5ed887c5",
+    "sycl/src/kernels/cuda/fused_gr.dp.cpp": "e5c789b35603a10c3e8b347be313a7c90f1a217f0343416fd8d275696e6af53d",
+    "sycl/src/kernels/cuda/iq_kernels.dp.cpp": "6cce58063c80c7a52538ec33f9aa3d29dca32284871f68a4f72b2ae4ef60a0d5",
+    "sycl/src/kernels/cuda/native_mmvq.dp.cpp": "870522fd858ef6f5c467e0d7ca595604104e050e8f6e8f932276196c64fec67a",
+    "sycl/src/kernels/cuda/qsa_decode_attn.dp.cpp": "6ee586e638ac08671e77f788af7aca2301833b66211f9d5c93749eba6d8c5441",
+    "sycl/src/kernels/gr_lo_once_bench.cpp": "02901572011c1b24df5d52375fd943793c28554ea18d407219f3db07c0ec1332",
+    "sycl/src/kernels/iq2xxs_reuse_bench.cpp": "dee914c486ab9763ac91fccf655981ed1989170de4eae7ea8185a20f686936ad",
+    "sycl/src/kernels/decode_roof_bench.cpp": "3b3f8809175795f36b4900cdef8c5f54d888a27f2c0c853fa7e4e5d54922f65e",
+    "sycl/src/kernels/decode_telemetry.cpp": "f070cff968353e046b9c15ebb83c9d45b4f53b5584b6d787cccca06039113de1"
+  },
+  "measured_engine_source_receipt": "final-source-identity.json",
+  "changes_since_measured_engine_build": [
+    "sycl/src/kernels/gr_lo_once_bench.cpp"
+  ],
+  "meaning": "Only the standalone GR benchmark layout changed; every measured production/CMake/kernel/core/header source remains byte identical to the engine build receipt. Corrected benchmark source/checks under18-gr-stride-micro.",
+  "previous_benchmark_source_sha256": "922d42078a5f341679ff7d49b3bb99027c874a46e0bead018dcbad4913b820e8",
+  "versions_changed": false,
+  "upstream_src_and_include_changed": false
+}

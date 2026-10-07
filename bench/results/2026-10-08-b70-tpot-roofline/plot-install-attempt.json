@@ -1,0 +1,12 @@
+{
+  "first_attempt": "network unreachable, cancelled owned pip process, exit143",
+  "GPU_measurements_in_first_pipeline": false,
+  "retry": "inherits existing host proxy environment; install only separate /opt/strata-plot-venv inside omix after GPU timing phases",
+  "inference_venv_unchanged": true,
+  "retry_status": "passed",
+  "plot_outputs": [
+    "roofline-model.png",
+    "roofline-model.svg",
+    "roofline-model.pdf"
+  ]
+}

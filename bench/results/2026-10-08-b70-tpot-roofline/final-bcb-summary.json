@@ -1,0 +1,272 @@
+{
+  "evidence_class": "development_performance_comparison",
+  "arms": [
+    "14-bcb-final-baseline-before",
+    "15-bcb-final-candidate",
+    "16-bcb-final-baseline-after"
+  ],
+  "samples_per_block": 3,
+  "actual_expert_cache_slots": 18609,
+  "config_env_delta": {
+    "STRATA_SYCL_GR_LO_ONCE": "1",
+    "STRATA_SYCL_EXPERT_MULTI16": "1"
+  },
+  "metrics": {
+    "client_ttft_ms": {
+      "baseline_before": [
+        31976.309867110103,
+        31957.762486068532,
+        31965.77493008226
+      ],
+      "candidate": [
+        31968.172861961648,
+        31957.209072075784,
+        31965.59893991798
+      ],
+      "baseline_after": [
+        31970.476203830913,
+        31954.49228095822,
+        31967.65931113623
+      ],
+      "paired_baseline": [
+        31973.393035470508,
+        31956.127383513376,
+        31966.717120609246
+      ],
+      "paired_change_pct": [
+        -0.016326617269146748,
+        0.003384917544679844,
+        -0.003497952845910035
+      ],
+      "paired_mean_change_pct": -0.005479884190125646,
+      "wins": 2,
+      "baseline_drift_pct": -0.007528153109792601,
+      "baseline_paired_mean": 31965.41251319771,
+      "candidate_mean": 31963.660291318472
+    },
+    "client_tpot_ms": {
+      "baseline_before": [
+        14.67470918763794,
+        14.300173368560625,
+        14.715702160645057
+      ],
+      "candidate": [
+        14.592615094072386,
+        14.231500207610866,
+        14.63476371056601
+      ],
+      "baseline_after": [
+        14.670646510214782,
+        14.297119952628718,
+        14.69698809361195
+      ],
+      "paired_baseline": [
+        14.672677848926362,
+        14.29864666059467,
+        14.706345127128504
+      ],
+      "paired_change_pct": [
+        -0.5456587793879364,
+        -0.469600057807229,
+        -0.48673831562981995
+      ],
+      "paired_mean_change_pct": -0.5006657176083285,
+      "wins": 3,
+      "baseline_drift_pct": -0.05912065621364038,
+      "baseline_paired_mean": 14.559223212216512,
+      "candidate_mean": 14.486293004083088
+    },
+    "engine_ipc_tpot_ms": {
+      "baseline_before": [
+        14.675269039215687,
+        14.300501960784315,
+        14.714762294117646
+      ],
+      "candidate": [
+        14.591830874509805,
+        14.230925537254901,
+        14.634120160784313
+      ],
+      "baseline_after": [
+        14.669911623529412,
+        14.297843823529412,
+        14.695772223529412
+      ],
+      "paired_baseline": [
+        14.67259033137255,
+        14.299172892156864,
+        14.705267258823529
+      ],
+      "paired_change_pct": [
+        -0.5504103572636865,
+        -0.4772818359263131,
+        -0.4838205031365561
+      ],
+      "paired_mean_change_pct": -0.5038375654421853,
+      "wins": 3,
+      "baseline_drift_pct": -0.06181115562864381,
+      "baseline_paired_mean": 14.559010160784315,
+      "candidate_mean": 14.485625524183007
+    },
+    "engine_average_ms_per_generated_token": {
+      "baseline_before": [
+        14.718359375,
+        14.344921875,
+        14.757421875
+      ],
+      "candidate": [
+        14.634375,
+        14.275390625,
+        14.68125
+      ],
+      "baseline_after": [
+        14.7125,
+        14.342578125,
+        14.737109375
+      ],
+      "paired_baseline": [
+        14.7154296875,
+        14.34375,
+        14.747265625
+      ],
+      "paired_change_pct": [
+        -0.5508142760442203,
+        -0.47657952069716236,
+        -0.4476465446454636
+      ],
+      "paired_mean_change_pct": -0.49168011379561544,
+      "wins": 3,
+      "baseline_drift_pct": -0.06507340815289364,
+      "baseline_paired_mean": 14.6021484375,
+      "candidate_mean": 14.530338541666667
+    },
+    "prompt_ms": {
+      "baseline_before": [
+        31901.1,
+        31884.8,
+        31893.6
+      ],
+      "candidate": [
+        31893.5,
+        31883.0,
+        31888.5
+      ],
+      "baseline_after": [
+        31896.5,
+        31881.8,
+        31893.7
+      ],
+      "paired_baseline": [
+        31898.8,
+        31883.3,
+        31893.65
+      ],
+      "paired_change_pct": [
+        -0.01661504508005951,
+        -0.0009409314594144291,
+        -0.016147414924294612
+      ],
+      "paired_mean_change_pct": -0.011234463821256183,
+      "wins": 3,
+      "baseline_drift_pct": -0.00783866972547953,
+      "baseline_paired_mean": 31891.916666666668,
+      "candidate_mean": 31888.333333333332
+    },
+    "decode_ms": {
+      "baseline_before": [
+        3767.9,
+        3672.3,
+        3777.9
+      ],
+      "candidate": [
+        3746.4,
+        3654.5,
+        3758.4
+      ],
+      "baseline_after": [
+        3766.4,
+        3671.7,
+        3772.7
+      ],
+      "paired_baseline": [
+        3767.15,
+        3672.0,
+        3775.3
+      ],
+      "paired_change_pct": [
+        -0.5508142760442203,
+        -0.47657952069716236,
+        -0.4476465446454636
+      ],
+      "paired_mean_change_pct": -0.49168011379561544,
+      "wins": 3,
+      "baseline_drift_pct": -0.06507340815289364,
+      "baseline_paired_mean": 3738.15,
+      "candidate_mean": 3719.766666666667
+    },
+    "elapsed_s": {
+      "baseline_before": [
+        35.718897562939674,
+        35.6048005099874,
+        35.718448067083955
+      ],
+      "candidate": [
+        35.689527411945164,
+        35.586422969121486,
+        35.697672948939726
+      ],
+      "baseline_after": [
+        35.71173236798495,
+        35.60081072780304,
+        35.71561307203956
+      ],
+      "paired_baseline": [
+        35.71531496546231,
+        35.60280561889522,
+        35.71703056956176
+      ],
+      "paired_change_pct": [
+        -0.07220306902538942,
+        -0.046015052715497884,
+        -0.054197172366643454
+      ],
+      "paired_mean_change_pct": -0.05747176470251025,
+      "wins": 3,
+      "baseline_drift_pct": -0.013069592387648932,
+      "baseline_paired_mean": 35.6783837179731,
+      "candidate_mean": 35.65787444333546
+    }
+  },
+  "outputs": [
+    {
+      "sample": 1,
+      "equal": true,
+      "sha256": [
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8",
+        "3a81d3acd9bee1a9dabd9390a2a7762a60b67efd2af24fb0de7f077e740f39f8"
+      ]
+    },
+    {
+      "sample": 2,
+      "equal": true,
+      "sha256": [
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6",
+        "3ae3721ac8a2ac633187465915045a28beedd5621417503c135f3121c1b679d6"
+      ]
+    },
+    {
+      "sample": 3,
+      "equal": true,
+      "sha256": [
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f",
+        "272bf0ba89beedf4a20c1a31e2dddf0c604dac24c8239aa7e75ee878a32fec4f"
+      ]
+    }
+  ],
+  "all_outputs_equal": true,
+  "tpot_definition": "Client TPOT uses first-to-last nonempty text-delta arrival divided by engine-generated tokens minus one; chunking may coalesce initial tokens. IPC times are frontend reader arrival times, not producer compute times. Delta gaps are not token gaps.",
+  "limits": "Development three-sample B/C/B, not formal acceptance; TTFT and first-to-last output TPOT reported separately."
+}

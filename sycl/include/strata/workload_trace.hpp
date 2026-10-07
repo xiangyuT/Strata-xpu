@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -33,7 +34,13 @@ inline int64_t trace_ns() {
 struct Sink {
     FILE* file = nullptr;
     std::mutex mutex;
+    int64_t min_position = -1;
+    bool decode_only = false;
     Sink() {
+        const char* decode = std::getenv("STRATA_WORKLOAD_TRACE_DECODE_ONLY");
+        decode_only = decode && *decode && *decode != '0';
+        const char* minimum = std::getenv("STRATA_WORKLOAD_TRACE_MIN_POSITION");
+        if (minimum && *minimum) min_position = std::strtoll(minimum, nullptr, 10);
         const char* path = std::getenv("STRATA_WORKLOAD_TRACE_FILE");
         if (path && *path) file = std::fopen(path, "a");
         if (file) std::setvbuf(file, nullptr, _IOFBF, 1 << 20);
@@ -54,7 +61,7 @@ struct ContextGuard {
 inline void phase(const char* name, void* queue) {
     context.phase = name;
     auto& s = sink();
-    if (!s.file) return;
+    if (!s.file || s.decode_only || context.position < s.min_position) return;
 #ifdef __linux__
     const long pid = getpid(), tid = syscall(SYS_gettid);
 #else
@@ -77,7 +84,8 @@ struct Scope {
     Scope(const char* label, void* stream = nullptr, int64_t t = 0, int64_t n = 0,
           int64_t k = 0, int64_t xstride = 0, int64_t ystride = 0, int quant_type = -1)
         : name(label), queue(stream), T(t), N(n), K(k), ldx(xstride), ldy(ystride), type(quant_type), ctx(context) {
-        if (!sink().file) return;
+        if (!sink().file || ctx.position < sink().min_position) return;
+        if (sink().decode_only && std::strncmp(label, "decode.", 7) != 0 && std::strcmp(label, "request.decode") != 0) return;
         epoch = trace_ns(); start = epoch;
 #ifdef __linux__
         pid = getpid(); tid = syscall(SYS_gettid);

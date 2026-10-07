@@ -1,0 +1,233 @@
+diff --git a/sycl/src/kernels/cuda/fused_gr.dp.cpp b/sycl/src/kernels/cuda/fused_gr.dp.cpp
+index fb2ee81..4a9865c 100644
+--- a/sycl/src/kernels/cuda/fused_gr.dp.cpp
++++ b/sycl/src/kernels/cuda/fused_gr.dp.cpp
+@@ -5,6 +5,7 @@
+ #include <sycl/sycl.hpp>
+ #include <dpct/dpct.hpp>
+ #include "strata/sycl_queue.hpp"
++#include "strata/workload_trace.hpp"
+ #include "strata/core/emulate.hpp"
+ #include "strata/kernels/fused_gr.hpp"
+ #include "strata/kernels/bf16_bits.hpp"
+@@ -568,6 +569,7 @@ __dpct_inline__ void gr_down_sliced_kernel(GrMulti m, float* tile) {
+         }
+     }
+ }
++template<bool PrepareLo = false>
+ __dpct_inline__ void gr_down_reduce_kernel(GrMulti m) {
+     auto item = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+     const int i = (int) item.get_global_id(2);
+@@ -576,7 +578,16 @@ __dpct_inline__ void gr_down_reduce_kernel(GrMulti m) {
+     if (r >= LR && m.a[0].w_inject == nullptr) return;
+     float x = 0.0f;
+     for (int sl = 0; sl < GRS_SLICES; ++sl) x += m.part2[((size_t) sl * kFusedGrMaxT + k) * GRS_ROWS + r];
+-    if (r < LR) m.part[(size_t) k * LR + r] = x;   // split 0
++    if (r < LR) {
++        m.part[(size_t) k * LR + r] = x;   // split 0, retained in both routes
++        if constexpr (PrepareLo) {
++            // Match up's zero-initialized split-0 sum, including signed zero.
++            float value = 0.0f;
++            value += x;
++            value /= (float) HC;
++            m.a[k].lo[r] = value / (1.0f + sycl::native::exp(-value));
++        }
++    }
+     else m.a[k].inject_out[r - LR] = x;
+ }
+ bool gr_down_sliced() {   // default (gr_bench: GR read 108.6 -> 76.5 us at 6 tokens); STRATA_GR_DOWN_SLICED=0: direct
+@@ -609,13 +620,14 @@ gr_up_multi_kernel exceeds 128 bytes and may cause high register pressure.
+ Consult with your hardware vendor to find the total register size available and
+ adjust the code, or use smaller sub-group size to avoid high register pressure.
+ */
++template<int MaxT = kFusedGrMaxT, bool LoReady = false>
+ __dpct_inline__ void gr_up_multi_kernel(GrMulti m) {
+     auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+-    float[kFusedGrMaxT][LR]>(
++    float[MaxT][LR]>(
+     sycl::ext::oneapi::this_work_item::get_work_group<3>());
+     auto &g = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+-        float[kFusedGrMaxT][HC][UPM_COLS]>(
++        float[MaxT][HC][UPM_COLS]>(
+         sycl::ext::oneapi::this_work_item::get_work_group<3>());
+     const int t = item_ct1.get_local_id(2), lane = t & 31, warp = t >> 5;
+     const int T = m.T;
+@@ -623,6 +635,9 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+ #pragma unroll
+     for (int i = t; i < T * LR; i += THREADS) {   // the down kernel's partial sums, in split order, then silu
+         const int k = i / LR, r = i % LR;
++        if constexpr (LoReady) {
++            lo[k][r] = m.a[k].lo[r];
++        } else {
+         float x = 0.0f;
+ #pragma unroll
+         for (int sp = 0; sp < DOWN_SPLIT; ++sp) if (sp < m.nsplit) x += m.part[((size_t) sp * kFusedGrMaxT + k) * LR + r];
+@@ -630,6 +645,7 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+         const float v = x / (1.0f + sycl::native::exp(-x));
+         lo[k][r] = v;
+         m.a[k].lo[r] = v;
++        }
+     }
+     /*
+     DPCT1065: Consider replacing sycl::nd_item::barrier() with
+@@ -667,7 +683,7 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+         }
+         float mine = 0.0f;
+ #pragma unroll
+-        for (int k = 0; k < kFusedGrMaxT; ++k) {
++        for (int k = 0; k < MaxT; ++k) {
+             if (k >= T) break;
+             float acc = dot8(wa, lo[k] + lane * 8);
+             if (lane < LR / 8 - 32) acc += dot8(wb, lo[k] + (32 + lane) * 8);
+@@ -698,6 +714,94 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+     }
+ }
+ 
++bool g_gr_up_static = [] {
++    const char* value = std::getenv("STRATA_SYCL_GR_UP_STATIC_T");
++    return value && std::atoi(value) != 0;
++}();
++bool g_gr_lo_once = [] {
++    const char* value = std::getenv("STRATA_SYCL_GR_LO_ONCE");
++    return value && std::atoi(value) != 0;
++}();
++int g_gr_up_sg = [] {
++    const char* value = std::getenv("STRATA_SYCL_GR_UP_SG");
++    return value && std::atoi(value) == 16 ? 16 : 32;
++}();
++
++__dpct_inline__ void gr_up_prepared_lo_simd16(GrMulti m) {
++    auto item = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
++    auto& lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[kFusedGrMaxT][LR]>(item.get_group());
++    auto& g = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[kFusedGrMaxT][HC][UPM_COLS]>(item.get_group());
++    const int tid = item.get_local_id(2), lane = tid & 15, subgroup = tid >> 4;
++    const int d0 = item.get_group(2) * UPM_COLS, T = m.T;
++    for (int i = tid; i < T * LR; i += THREADS) lo[i / LR][i % LR] = m.a[i / LR].lo[i % LR];
++    item.barrier();
++    const auto sg = item.get_sub_group();
++    for (int r = subgroup; r < HC * UPM_COLS; r += THREADS / 16) {
++        const int c = r / UPM_COLS, dd = r % UPM_COLS, i = c * N + d0 + dd;
++        const auto* w4 = reinterpret_cast<const sycl::uint4*>(m.a[0].w_up + (size_t)i * LR);
++        const sycl::uint4 lower_weights = w4[lane], upper_weights = w4[16 + lane];
++        const sycl::uint4 tail = lane < 8 ? w4[32 + lane] : sycl::uint4(0);
++        float rv = 0, wn = 0, rsc = 0, bo = 0, ip = 0;
++        bool apply = false;
++        if (lane < T) {
++            const auto& a = m.a[lane];
++            rv = a.R[i]; wn = a.w_norm[i]; rsc = a.rs[c]; apply = a.apply;
++            if (apply) { bo = a.bo_prev[d0 + dd]; ip = a.inj_prev[c]; }
++        }
++        float mine = 0;
++        #pragma unroll
++        for (int k = 0; k < kFusedGrMaxT; ++k) {
++            if (k >= T) break;
++            // The old lower lane first adds its tail. The paired addition is
++            // exactly the old xor16 step; later xor steps keep the same order.
++            float lower = dot8(lower_weights, lo[k] + lane * 8);
++            if (lane < 8) lower += dot8(tail, lo[k] + (32 + lane) * 8);
++            const float upper = dot8(upper_weights, lo[k] + (16 + lane) * 8);
++            float acc = lower + upper;
++#pragma unroll
++            for (int offset = 8; offset > 0; offset >>= 1) acc += sycl::permute_group_by_xor(sg, acc, offset);
++            if (lane == k) mine = acc;
++        }
++        if (lane < T) {
++            if (apply) { rv = sycl::fma(bo, 2.0f * sigmoidf_(ip / (float)HC), rv); m.a[lane].R_out[i] = rv; }
++            g[lane][c][dd] = rv * wn * rsc * sigmoidf_(mine);
++        }
++    }
++    item.barrier();
++    for (int i = tid; i < T * UPM_COLS; i += THREADS) {
++        const int k = i / UPM_COLS, col = i % UPM_COLS;
++        float sum = 0;
++        for (int c = 0; c < HC; ++c) sum += g[k][c][col];
++        m.a[k].mixed[d0 + col] = sum / (float)HC;
++    }
++}
++
++void launch_gr_up_prepared_lo_simd16(const GrMulti& m, dpct::queue_ptr stream) {
++    auto properties = sycl::ext::oneapi::experimental::properties{sycl::ext::oneapi::experimental::use_root_sync};
++    stream->parallel_for<dpct_kernel_name<class gr_up_prepared_lo_simd16_kernel>>(
++        sycl::nd_range<3>(sycl::range(1, 1, UPM_BLOCKS) * sycl::range(1, 1, THREADS), sycl::range(1, 1, THREADS)), properties,
++        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(16)]] { gr_up_prepared_lo_simd16(m); });
++}
++
++void launch_gr_up_prepared_lo(const GrMulti& m, dpct::queue_ptr stream) {
++    auto properties = sycl::ext::oneapi::experimental::properties{
++        sycl::ext::oneapi::experimental::use_root_sync};
++    stream->parallel_for<dpct_kernel_name<class gr_up_prepared_lo_kernel>>(
++        sycl::nd_range<3>(sycl::range(1, 1, UPM_BLOCKS) * sycl::range(1, 1, THREADS),
++                          sycl::range(1, 1, THREADS)), properties,
++        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_up_multi_kernel<kFusedGrMaxT, true>(m); });
++}
++
++template<int MaxT>
++void launch_gr_up_static(const GrMulti& m, dpct::queue_ptr stream) {
++    auto properties = sycl::ext::oneapi::experimental::properties{
++        sycl::ext::oneapi::experimental::use_root_sync};
++    stream->parallel_for<dpct_kernel_name<class gr_up_static_t_kernel, dpct_kernel_scalar<MaxT>>>(
++        sycl::nd_range<3>(sycl::range(1, 1, UPM_BLOCKS) * sycl::range(1, 1, THREADS),
++                          sycl::range(1, 1, THREADS)), properties,
++        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_up_multi_kernel<MaxT>(m); });
++}
++
+ 
+ // ================================ hc read v3 (opt-in: STRATA_GR_V3=1) - two kernels, stream-split ================
+ // The norm kernel runs on only T blocks (~16 us of pure latency per call) and `down` on 41 blocks (~280 GB/s).
+@@ -1593,6 +1697,10 @@ std::atomic<int> g_variant[64];
+ 
+ // one partials buffer per queue (the verifier's and the drafter's launches never share a queue; within a queue the
+ // launches are ordered, and a graph capture records the pointer)
++void fused_gr_set_up_static(bool enabled) { g_gr_up_static = enabled; }
++void fused_gr_set_lo_once(bool enabled) { g_gr_lo_once = enabled; }
++void fused_gr_set_up_sg(int lanes) { g_gr_up_sg = lanes == 16 ? 16 : 32; }
++
+ static float* down_partials(sycl::queue* q) {
+     static std::mutex mu;
+     static std::unordered_map<sycl::queue*, float*> bufs;
+@@ -1606,6 +1714,7 @@ static float* down_partials(sycl::queue* q) {
+ 
+ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, void* stream, unsigned long long* stamp_buf,
+                          int stamp_i0) {
++    strata::workload_trace::Scope trace("decode.gr_read_api", stream, n_tok, D, LR, HC, N, 30);
+     if (n_tok < 1 || n_tok > kFusedGrMaxT || xn_scratch == nullptr) {
+         std::fprintf(stderr, "fused_gr_read_multi: invalid arguments\n");
+         std::exit(1);
+@@ -1790,6 +1899,7 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
+         attr[dev] = true;
+     }
+     const int chunk_tok = (dev >= 0 && dev < 64 && chunk[dev]) ? chunk[dev] : kFusedGrMaxT;
++    const bool lo_once = g_gr_lo_once && gr_down_sliced();
+     if (gr_down_sliced()) {
+         m.part2 = slice_partials(st);
+         m.nsplit = 1;
+@@ -1802,6 +1912,11 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
+                 });
+         });
+         const unsigned nred = unsigned((n_tok * GRS_ROWS + 127) / 128);
++        if (lo_once)
++        st->parallel_for<dpct_kernel_name<class gr_down_reduce_lo_once_k>>(
++            sycl::nd_range<3>(sycl::range(1, 1, nred) * sycl::range(1, 1, 128), sycl::range(1, 1, 128)),
++            [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_down_reduce_kernel<true>(m); });
++        else
+         st->parallel_for<dpct_kernel_name<class gr_down_reduce_k>>(
+             sycl::nd_range<3>(sycl::range(1, 1, nred) * sycl::range(1, 1, 128), sycl::range(1, 1, 128)),
+             [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_down_reduce_kernel(m); });
+@@ -1860,7 +1975,15 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
+         }
+     }
+     if (stamp_buf) gpu_stamp(stamp_buf, stamp_i0 + 1, stream);
+-    {
++    if (lo_once) {
++        if (g_gr_up_sg == 16) launch_gr_up_prepared_lo_simd16(m, st);
++        else launch_gr_up_prepared_lo(m, st);
++    } else if (g_gr_up_static) {
++        if (n_tok == 1) launch_gr_up_static<1>(m, st);
++        else if (n_tok == 2) launch_gr_up_static<2>(m, st);
++        else if (n_tok <= 4) launch_gr_up_static<4>(m, st);
++        else launch_gr_up_static<8>(m, st);
++    } else {
+         auto exp_props = sycl::ext::oneapi::experimental::properties{
+             sycl::ext::oneapi::experimental::use_root_sync};
+ 

@@ -94,5 +94,10 @@
     "date": "2026-10-07",
     "superseded_authorization_state": "current-summary-before-authorized-push.json",
     "notice": "The archived authorization-pending status is historical. Measured source-overlay and binary identities remain unchanged."
+  },
+  "tpot_followup_notice": {
+    "date": "2026-10-08",
+    "replacement": "../2026-10-08-b70-tpot-roofline/README.md",
+    "notice": "The prefill campaign and all its identities/timings remain historical evidence. The current user priority is TPOT. New Sysman byte counters are available although VTune GPU Metrics Discovery remains unavailable; prior blanket counter limitation is historical."
   }
 }

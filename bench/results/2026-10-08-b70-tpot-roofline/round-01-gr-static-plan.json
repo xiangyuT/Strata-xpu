@@ -1,0 +1,38 @@
+{
+  "candidate": "GR up token-capacity specialization",
+  "hypothesis": "gr_up_multi_kernel reserves 8-token SLM arrays and carries runtime token-loop bounds even for T1/2/3/4; specialize capacity without changing actual T, data layout, accumulation order, barriers or route defaults.",
+  "trace": "gr-up-exact-bindings.jsonl",
+  "roofline": "gr-roofline.json",
+  "frozen_shape_domain": {
+    "N": 10240,
+    "K": 320,
+    "HC": 4,
+    "n_embd": 2560,
+    "actual_T": [
+      1,
+      2,
+      3,
+      4,
+      6
+    ],
+    "candidate_capacities": [
+      1,
+      2,
+      4,
+      8
+    ]
+  },
+  "preserve": [
+    "FP32 operation/reduction order",
+    "BF16 weight layout",
+    "actual T and output bytes",
+    "barriers and in-order queue",
+    "default route",
+    "model/KV/MTP/cache fixtures"
+  ],
+  "correctness": "baseline/candidate byte equality on all visible GR outputs and scratch, T1..8, pending write on/off, real weights plus adversarial inputs; guards and finite outputs",
+  "micro": "8 weight/input sets; same-process alternating B/C/B continuous chunks; >=1000 calls and2s warm, >=2000 calls and3s timed; same target; output reset outside timed call; reject nonrepeatable or unstable direction",
+  "E2E": "existing32768/256 fixture; 3 warmups +3 measured requests per fresh B/C/B block; TPOT primary, exact outputs, MTP counts and baseline drift; no GPU profilers",
+  "evidence_class": "development_performance_comparison",
+  "remote_status": "local iteration only; no new push authorization assumed"
+}

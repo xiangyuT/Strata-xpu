@@ -19,12 +19,18 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 add_compile_definitions(STRATA_VERSION="${PROJECT_VERSION}-sycl")
-option(STRATA_SYCL_WORKLOAD_TRACE "Build CPU shape/stage annotations for profiling only" OFF)
+option(STRATA_SYCL_WORKLOAD_TRACE "Build diagnostic CPU annotations and optional routing audit" OFF)
 if(STRATA_SYCL_WORKLOAD_TRACE)
   set_property(SOURCE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/prefill.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/gemm.dp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/program/generate.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/verify.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/mtp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/native_mmvq.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/iq_kernels.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/qsa_decode_attn.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/fused_gr.dp.cpp
     APPEND PROPERTY COMPILE_DEFINITIONS STRATA_SYCL_WORKLOAD_TRACE=1)
 endif()
 
@@ -240,12 +246,27 @@ if(STRATA_SYCL_PARITY)
   target_link_libraries(kv_hybrid_parity PRIVATE strata_kernels)
   add_executable(mmvq_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/mmvq_bench.cpp)   # dense mmvq timing
   target_link_libraries(mmvq_bench PRIVATE strata_kernels)
+  add_executable(decode_roof_bench src/kernels/decode_roof_bench.cpp)
+  target_link_libraries(decode_roof_bench PRIVATE strata_includes)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_path(STRATA_LEVEL_ZERO_INCLUDE_DIR level_zero/zes_api.h)
+    find_library(STRATA_LEVEL_ZERO_LOADER ze_loader)
+    if(STRATA_LEVEL_ZERO_INCLUDE_DIR AND STRATA_LEVEL_ZERO_LOADER)
+      add_executable(decode_telemetry src/kernels/decode_telemetry.cpp)
+      target_include_directories(decode_telemetry PRIVATE ${STRATA_LEVEL_ZERO_INCLUDE_DIR})
+      target_link_libraries(decode_telemetry PRIVATE ${STRATA_LEVEL_ZERO_LOADER})
+    endif()
+  endif()
   add_executable(mmvq_sg_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/mmvq_sg_bench.cpp)   # SIMD16 vs 32 decode mmvq
   target_link_libraries(mmvq_sg_bench PRIVATE strata_kernels)
   add_executable(q6k_align_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/q6k_align_bench.cpp)   # Q6_K block alignment
   target_link_libraries(q6k_align_bench PRIVATE strata_kernels)
   add_executable(gr_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/gr_bench.cpp)   # fused GR read timing
   target_link_libraries(gr_bench PRIVATE strata_kernels)
+  add_executable(gr_lo_once_bench src/kernels/gr_lo_once_bench.cpp)
+  target_link_libraries(gr_lo_once_bench PRIVATE strata_kernels)
+  add_executable(iq2xxs_reuse_bench src/kernels/iq2xxs_reuse_bench.cpp)
+  target_link_libraries(iq2xxs_reuse_bench PRIVATE strata_kernels)
   add_executable(xmx_gemm_bench ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/xmx_gemm_bench.cpp)   # XMX quantized GEMM vs dequant+oneMKL
   target_link_libraries(xmx_gemm_bench PRIVATE strata_kernels strata_prefill)   # -qmkl for the oneMKL reference
   # one native expert three ways on real GGUF rows (ggml reference, CPU path, GPU native_expert_grouped):

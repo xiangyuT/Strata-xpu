@@ -1,0 +1,13 @@
+{
+  "recorded_before_E2E_completion": true,
+  "actual_format16_call_counts_by_T": {
+    "1": 231,
+    "2": 154,
+    "3": 154,
+    "4": 583
+  },
+  "representative_graph_component_weighted_delta_ms": -18.674046209264286,
+  "per_255_interval_equivalent_ms": -0.07323155376182074,
+  "performance_claim": false,
+  "limits": "Component screening only, includes T1 regression; representative actual plans/real weights/synthetic activations and separate graph batching cannot prove transfer to the full native graph. Endpoint comparison decides."
+}

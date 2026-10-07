@@ -1,0 +1,8 @@
+{
+  "date": "2026-10-08",
+  "finding": "GR native graph sidecar retained ~19-23% T2+ benefit while real workflow gain remains0.344%; graph replay alone does not explain transfer gap. Sidecar packed per-token output structs at stride O=2888 floats, engine uses separate contiguous lo320/rs4/inject4/mixed2560 arrays.",
+  "previous_artifact": "final-gr-native-graph-micro.jsonl",
+  "previous_bench_source_sha256": "922d42078a5f341679ff7d49b3bb99027c874a46e0bead018dcbad4913b820e8",
+  "action": "Replace harness output layout with engine API strides,512byteguardoffsets, preserve all original measurements. Run new640case graph correctness and nativegraph B/C/B after model timing phases.",
+  "scope": "Benchmark source only; normal engine/source/binary and running final workflow unchanged. No endpoint projection from either layout."
+}

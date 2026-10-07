@@ -9,6 +9,7 @@
 #include <dpct/dpct.hpp>
 #include "strata/sycl_math.hpp"
 #include "strata/sycl_queue.hpp"
+#include "strata/workload_trace.hpp"
 #include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/iq_dequant.hpp"
 #include "strata/kernels/dp4a.hpp"
@@ -1140,6 +1141,36 @@ struct MultiW { int w[8]; int a = 0, b = 0; float d = 0.f; };
 
 template <int TY> struct Multi { static constexpr bool has = false; static constexpr int NW = 0; };
 
+template <> struct Multi<16> {   // IQ2_XXS: same decoded weights for each activation
+    static constexpr bool has = true; static constexpr int NW = 8;
+    __dpct_inline__ static void prep(const void* vbq, int kbx, int iqs, MultiW& m, const void* = nullptr) {
+        const auto* block = static_cast<const block_iq2_xxs*>(vbq) + kbx;
+        const int q2 = get_int_b2(block->qs, iqs);
+        const auto* codes = reinterpret_cast<const uint8_t*>(&q2);
+        const uint32_t aux = get_int_b2(block->qs, iqs + 1);
+#pragma unroll
+        for (int j = 0; j < 8; j += 2) {
+            const sycl::uint2 grid = reinterpret_cast<const sycl::uint2*>(iq2xxs_grid)[codes[j / 2]];
+            const uint32_t signs = unpack_ksigns(aux >> (7 * j / 2));
+            const int s0 = swar_ne4(signs & 0x08040201), s1 = swar_ne4(signs & 0x80402010);
+            m.w[j] = swar_sub4(grid.x() ^ s0, s0);
+            m.w[j + 1] = swar_sub4(grid.y() ^ s1, s1);
+        }
+        m.a = aux >> 27 | 1;
+        m.d = sycl::vec<sycl::half, 1>(block->d).convert<float, sycl::rounding_mode::automatic>()[0];
+    }
+    __dpct_inline__ static void acts(const block_q8_1* y, int iqs, int* u, float& ds) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) u[j] = get_int_b4(y[iqs / 2].qs, j);
+        ds = y[iqs / 2].ds[0];
+    }
+    __dpct_inline__ static float finish(int s0, int s1, const MultiW& m, float ds) {
+        const int sum = (s0 + s1) * m.a / 8; // original integer scaling/truncation
+        const float scale = m.d * ds;
+        return scale * sum;
+    }
+};
+
 template <> struct Multi<18> {   // iq3_xxs
     static constexpr bool has = true; static constexpr int NW = 8;
     __dpct_inline__ static void prep(const void* vbq, int kbx, int iqs, MultiW& m, const void* grid = nullptr) {
@@ -1336,12 +1367,12 @@ __dpct_inline__ void row_dot_multi(const uint8_t* row, const block_q8_1* const* 
 }
 
 // The entries e0..e1 of one row: chunks of 4 through the multi-entry dot, the rest one at a time.
-template <int TY, int LANES>
+template <int TY, int LANES, bool ReuseIQ2XXS = false>
 __dpct_inline__ void row_entries(const uint8_t* wr, const block_q8_1* x, int x_stride, const int32_t* ent_idx,
                                  int e0, int e1, int nb, int sub, float* dst, size_t dst_stride,
                                  const void* grid = nullptr) {
     int e = e0;
-    if constexpr (Multi<TY>::has) {
+    if constexpr (Multi<TY>::has && (TY != 16 || ReuseIQ2XXS)) {
         for (; e + 4 <= e1; e += 4) {
             const block_q8_1* xs[4] = {x + (size_t) ent_idx[e] * x_stride, x + (size_t) ent_idx[e + 1] * x_stride,
                                        x + (size_t) ent_idx[e + 2] * x_stride, x + (size_t) ent_idx[e + 3] * x_stride};
@@ -1367,7 +1398,7 @@ __dpct_inline__ void row_entries(const uint8_t* wr, const block_q8_1* x, int x_s
 
 constexpr int GU_ROWS = 8;     // rows per block (one warp each)
 
-template <int TG, int LN = kExpertLanes>
+template <int TG, int LN = kExpertLanes, bool ReuseIQ2XXS = false>
 __dpct_inline__ void native_gu_kernel(
     const unsigned long long *__restrict__ grp_ptr,
     const int32_t *__restrict__ grp_start, const int32_t *__restrict__ n_groups,
@@ -1404,7 +1435,7 @@ __dpct_inline__ void native_gu_kernel(
     for (int g = (int) item_ct1.get_group(1); g < ng; g += (int) item_ct1.get_group_range(1)) {
         const uint8_t* wr = (const uint8_t*) grp_ptr[g] + off;
         const int e0 = grp_start[g], e1 = grp_start[g + 1];
-        row_entries<TG, LN>(wr, xq, xb, ent_tok, e0, e1, nb, sub, (is_up ? up : gate) + r, (size_t) L.n_ff, grid);
+        row_entries<TG, LN, ReuseIQ2XXS>(wr, xq, xb, ent_tok, e0, e1, nb, sub, (is_up ? up : gate) + r, (size_t) L.n_ff, grid);
     }
 }
 
@@ -1481,7 +1512,7 @@ __dpct_inline__ void native_down_kernel(
         const uint8_t* wr = (const uint8_t*) grp_ptr[g] + off;
         const int e0 = grp_start[g], e1 = grp_start[g + 1];
         int e = e0;
-        if constexpr (Multi<TD>::has) {
+        if constexpr (Multi<TD>::has && TD != 16) { // new reuse is GU-only and opt-in
             for (; e + 4 <= e1; e += 4) {
                 const block_q8_1* xs[4] = {hq + (size_t) e * hb, hq + (size_t) (e + 1) * hb, hq + (size_t) (e + 2) * hb, hq + (size_t) (e + 3) * hb};
                 float o[4];
@@ -2169,10 +2200,29 @@ inline int lanes_env(const char* name) {
 }
 inline int gu_lanes() { static const int v = lanes_env("STRATA_GU_LANES"); return v; }
 inline int down_lanes() { static const int v = lanes_env("STRATA_DOWN_LANES"); return v; }
+bool g_iq2xxs_reuse = [] {
+    const char* value = std::getenv("STRATA_SYCL_EXPERT_MULTI16");
+    return value && std::atoi(value) != 0;
+}();
+
+void launch_gu_iq2xxs_reuse(unsigned groups, dpct::queue_ptr stream, const unsigned long long* ptr,
+                           const int32_t* start, const int32_t* count, const int32_t* tok,
+                           const block_q8_1* x, const NativeExpertLayout& layout, float* gate, float* up) {
+    constexpr int lanes = 8, rows = 256 / lanes;
+    const unsigned columns = (unsigned)((2 * layout.n_ff + rows - 1) / rows);
+    auto properties = sycl::ext::oneapi::experimental::properties{sycl::ext::oneapi::experimental::use_root_sync};
+    stream->parallel_for<dpct_kernel_name<class native_gu_iq2xxs_reuse_kernel>>(
+        sycl::nd_range<3>(sycl::range<3>(1, groups, (size_t)columns * 256), sycl::range<3>(1, 1, 256)), properties,
+        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { native_gu_kernel<16, lanes, true>(ptr, start, count, tok, x, layout, gate, up); });
+}
+
 template <int TG, int LN>
 void launch_gu_port(unsigned groups, dpct::queue_ptr s, const unsigned long long *grp_ptr, const int32_t *grp_start,
                     const int32_t *n_groups, const int32_t *ent_tok, const block_q8_1 *X,
                     const NativeExpertLayout &L, float *gate, float *up) {
+    if constexpr (TG == 16 && LN == 8) {
+        if (g_iq2xxs_reuse) { launch_gu_iq2xxs_reuse(groups, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); return; }
+    }
     constexpr int ROWS = 256 / LN;
     const unsigned gx = (unsigned) ((2 * L.n_ff + ROWS - 1) / ROWS);
     auto exp_props = sycl::ext::oneapi::experimental::properties{sycl::ext::oneapi::experimental::use_root_sync};
@@ -2592,11 +2642,23 @@ bool g_grouped_v1 = env_on("STRATA_GROUPED_V1");
 }  // namespace
 
 void native_grouped_set_v1(bool v1) { g_grouped_v1 = v1; }
+void native_expert_set_iq2xxs_reuse(bool enabled) { g_iq2xxs_reuse = enabled; }
+
+void native_expert_gu_probe(const NativeExpertLayout& layout, const unsigned long long* pointers,
+                            const int32_t* starts, const int32_t* groups, const int32_t* tokens,
+                            const void* x_q8_1, float* gate, float* up, int64_t capacity, void* stream) {
+    if (layout.gu_type != 16 || capacity <= 0) throw std::invalid_argument("IQ2_XXS GU probe contract");
+    launch_gu_port<16, 8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, tokens,
+                          static_cast<const block_q8_1*>(x_q8_1), layout, gate, up);
+    check("IQ2_XXS GU probe");
+}
 
 void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long* grp_ptr, const int32_t* grp_start,
                            const int32_t* n_groups, const int32_t* ent_dst, const int32_t* ent_tok, int64_t cap_groups,
                            int64_t cap_entries, const void* x_q8_1, void* scratch, float* out, void* stream,
                            int64_t grid_groups) {
+    strata::workload_trace::Scope trace("decode.expert_grouped", stream, cap_entries, L.n_ff, L.n_embd,
+                                        L.gu_row, L.d_row, L.gu_type);
     if (cap_groups <= 0 || cap_entries <= 0) return;
     if (L.n_ff % 32 != 0) { std::fprintf(stderr, "native_expert_grouped: n_ff %lld\n", (long long) L.n_ff); std::exit(1); }
     dpct::queue_ptr s = strata::q_of(stream);

@@ -1,0 +1,19 @@
+{
+  "prior": "01-decode-contract-trace",
+  "status": "structural trace passed; partial graph-source metadata",
+  "cause": "32767 position filter excluded T=1/T=4 captures in short warmup. A cached graph does not call primitive wrappers again. Captured layer contracts cover T=2/3 only.",
+  "preserve": [
+    "GPU timeline",
+    "output parity",
+    "partial exact T2/T3 attribution"
+  ],
+  "next": "03-graph-contract-trace",
+  "changed_input": "decode-only name filter includes all graph capture phases; add direct GR API metadata. No model/numerical/runtime policy change.",
+  "actions": {
+    "prior_complete_kernel_inventory": "reuse",
+    "roof_calibration": "reuse",
+    "normal_TPOT_baseline": "reuse",
+    "graph_source_and_gpu_capture": "execute",
+    "attribution_and_roofline": "regenerate"
+  }
+}
