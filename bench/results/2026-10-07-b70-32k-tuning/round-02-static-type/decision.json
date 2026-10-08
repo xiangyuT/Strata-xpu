@@ -1,9 +1,0 @@
-{
-  "decision": "diagnostic intermediate, no standalone E2E speedup or default promotion",
-  "correctness": "all supported formats and tails byte-exact; real formats finite",
-  "micro_summary": "micro-summary.json",
-  "rationale": "Typed specialization alone changes matched micro by 0.26-1.04%; retain it for exact per-format trace attribution, then screen the independent runtime-indexing hypothesis. No threshold or acceptance claim from micro alone.",
-  "standalone_bcb": "not run; not a standalone promotion candidate. Combined typed/indexed candidate must complete B/C/B against accepted SG8 before any workload-performance claim.",
-  "binary_sha256": "008a617079ee694b2a0010e0043469157e7e8bdad942264602ff325bf806b312",
-  "profile": "09-unitrace-static-type"
-}

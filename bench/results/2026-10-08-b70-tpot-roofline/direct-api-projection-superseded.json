@@ -1,6 +1,0 @@
-{
-  "date": "2026-10-08",
-  "notice": "The 115.92ms projection from direct API call wall/event spans is invalid for native command-graph replay; it includes host submission/feeding costs already removed by the production graph. Original direct-API micro measurements remain valid for that boundary.",
-  "reprofile": "08-lo-route-reprofile/route-summary.json",
-  "next": "native graph replay micro; no TPOT claim from direct-API speedup"
-}

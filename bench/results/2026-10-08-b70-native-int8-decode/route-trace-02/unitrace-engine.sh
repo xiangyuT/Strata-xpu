@@ -1,2 +1,0 @@
-#!/bin/bash
-exec /tools/unitrace/bin/unitrace --device-timing --chrome-device-logging --verbose --include-kernels 'WideIQ4,launch_down_port' --output-dir-path /artifacts/tpot-material-20261008-a7s9d4o2/route-trace-02 --output /artifacts/tpot-material-20261008-a7s9d4o2/route-trace-02/unitrace-summary.txt --teardown-on-signal 15 /artifacts/tpot-material-20261008-a7s9d4o2/bin/integration-01/strata "$@"

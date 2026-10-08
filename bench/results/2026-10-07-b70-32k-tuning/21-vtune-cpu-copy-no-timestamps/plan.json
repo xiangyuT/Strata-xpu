@@ -1,9 +1,0 @@
-{
-  "evidence_class": "resident_workload_profile",
-  "source_binary": "bfe419763ad8a94b4f0d81740127d9ace98c2570504716d7738e6f08d6a2879d",
-  "samples": 1,
-  "warmups": 3,
-  "boundary": "ITT resume after warmup, pause after measured request",
-  "purpose": "Software CPU sampling retains native GPU events; locate remaining wait/dispatch costs after disabling unused transfer timestamps",
-  "no_speedup_from_profile": true
-}

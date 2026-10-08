@@ -1,9 +1,0 @@
-{
-  "base_revision": "0214cecaf4b27252a52e9e1706a2ed3f60076cee",
-  "runtime": "sameomiximageandB70; fullmodelargs/cache/KV/MTP unchanged; sourceoverlay only",
-  "changes": "two opt-inroutes, originalBFNintegerIQ4_XS lookup andexactQ2_0 byteexpand; priorGR/expertflags0botharms",
-  "contract": "IQ4widequant23 Kmultiple256 T1..8, unchangedgeometry/FPbody; Q2down42 LN8 !old !split, private10042diagnostictrait; allotherdispatchfallbacks unchanged",
-  "functional_gates": "q2existingfrozenplans+extendedT5..8groupingvalidboundaries usingactualsameweightlayers; IQ4existing65536/1040 bytechecks onintegrationbinary withproductionflags0; native_grouped_parity flags0/1; noepsilonrelaxation",
-  "production_model_validation": "freshserver baseline/candidate/baseline; development3measured+3excluded32kwarm each, seed42; clientTTFT andclientTPOTdistinct; user>=5% and3pairedwins,absdrift<=1pct; output/cache/MTP/streaminvariants; noinstrumentationtimings",
-  "delivery_not_component": "PassonlywhenfullmodelclientTPOT>=5% stable; otherwisecontinue."
-}

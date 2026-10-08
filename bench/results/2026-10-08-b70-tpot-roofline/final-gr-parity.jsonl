@@ -1,1 +1,0 @@
-{"kind":"correctness","variant":"lo-once","mode":"native-graph","cases":640,"real_weight_sets":8,"T_domain":"1..8","pending_write":"on/off","patterns":5,"outputs":"R,lo,rs,inject,mixed,xn","result":"byte-exact,finite,guards passed"}

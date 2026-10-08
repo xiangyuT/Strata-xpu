@@ -1,7 +1,0 @@
-{
-  "status": "correctness-failed",
-  "passed": "integerLUT65536cases",
-  "failure": "firstrealmatrixT1pattern0, nativebeab23a1,candidatebeab23a0(1ULP)",
-  "performance_samples": 0,
-  "decision": "Keeporiginal FPkernel; no relaxed tolerance. Group-registerintegerlookup alternative next. Do not assert unproved FMA/accumulator cause."
-}

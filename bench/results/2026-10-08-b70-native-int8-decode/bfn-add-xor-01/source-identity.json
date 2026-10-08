@@ -1,8 +1,0 @@
-{
-  "sycl/src/kernels/cuda/native_mmvq.dp.cpp": "7e49fd44be29b3f72fbcdf98601af7d6313a471e6bdfde750ba651273fd00307",
-  "sycl/src/kernels/iq4_decode_cost_bench.cpp": "3d9b1f4fc6d108869a60da683eb423f15615aef88dc077bb7b4d448c4ec99fc5",
-  "sycl/src/kernels/iq4_esimd_probe.cpp": "a08ed0269d22d694f848961a979ac153f6dfa8826e65694becb44feeb2776969",
-  "sycl/include/strata/kernels/native_mmvq_tuning.hpp": "dda001cd8803c0c0f6da739017e25f1d0028d96524b9fc494b8f841c6de9449e",
-  "sycl/include/strata/kernels/iq4_lut.hpp": "bc62eeb234d899374e3f4d09c70765110bdd4918b8213f873dd13f26e1bef544",
-  "sycl/CMakeLists.txt": "877049b02308b3b21704d5666527c705a06318373c076f39aaeb54e7a50ae9af"
-}

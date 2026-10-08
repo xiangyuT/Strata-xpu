@@ -2500,7 +2500,6 @@ void native_iq4_group_lut_probe(unsigned int* output, void* stream) {
 void native_iq4_xs_decode_probe(int mode, const void* weights, const void* x, float* y,
                                int K, int N, int T, void* stream) {
     if (mode == 0) { native_iq4_xs_mmvq(weights, x, y, K, N, T, stream); return; }
-    if (mode == 3) { native_iq4_xs_esimd_probe(weights, x, y, K, N, T, stream); return; }
     validate_shape(K, T, 256); validate_pointer(weights); validate_pointer(x); validate_pointer(y); validate_stream(stream);
     if (N <= 0) throw std::invalid_argument("IQ4 lookup probe requires positive N");
     bool launched = false;

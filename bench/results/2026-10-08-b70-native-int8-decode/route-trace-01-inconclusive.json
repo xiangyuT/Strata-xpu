@@ -1,8 +1,0 @@
-{
-  "status": "profiling-inconclusive",
-  "raw_request_status": "passed1sample",
-  "finding": "Unitrace device summarycontainsmemcpy/barrier only,0compute kernels; cannotinferroutecoverage",
-  "hypothesis": "start-paused duringnativegraphconstruction leftreplaykernelsuninstrumented; kernelnamefilteralsochangedtonon-angle substrings nextattempt",
-  "next": "Capturefromgraphconstruction,chrome-deviceonly,thenisolateactualsamplewindow; keepraw01immutable",
-  "performance_effect": "SeparateunprofiledBCBremainsvalid; noinstrumenteddataaddedto6.68pct result"
-}
