@@ -45,7 +45,8 @@ public:
     /// GPU can address (USM host). They are then `pinned()` with a `device_alias()`: the verify window reads them over
     /// PCIe on the GPU (its "direct" mode) and the prompt path DMAs them, instead of an SSD read each time they are
     /// routed - what made decode collapse to 4-5 tok/s at 256K (docs/INTEL.md). At most `cap` bytes; returns the
-    /// number mirrored. Threads read in parallel.
+    /// number mirrored. Threads read in parallel. Large mirrors use bounded USM host regions when the
+    /// mirror exceeds the device's single-allocation limit; each expert stays contiguous within one region.
     int64_t mirror(const std::vector<std::pair<int64_t, int64_t>>& pairs, uint64_t cap, int threads, std::string& err);
     bool pinned(int64_t layer, int64_t expert) const override;
     /// The mirrored blob's address, which the device can read. For a layer that has any mirrored expert, an
@@ -69,10 +70,10 @@ private:
     std::mutex mu_;
     int64_t n_layers_ = 0, n_expert_ = 0;
     int64_t reads_ = 0;
-    uint8_t* mirror_ = nullptr;                    ///< USM host (pinned, device-readable)
+    std::vector<uint8_t*> mirror_regions_;          ///< owned USM host regions (pinned, device-readable)
     uint64_t mirror_bytes_ = 0;
-    std::vector<int64_t> mirror_off_;              ///< per (layer, expert): offset in mirror_, -1 = not mirrored
-    std::vector<int64_t> layer_first_;             ///< per layer: offset of its first mirrored blob, -1 = none
+    std::vector<const uint8_t*> mirror_ptr_;       ///< per (layer, expert): contiguous blob, nullptr = absent
+    std::vector<const uint8_t*> layer_first_;      ///< per layer: its first mirrored blob, nullptr = none
 };
 
 }  // namespace strata::core
