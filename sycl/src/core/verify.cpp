@@ -11,6 +11,7 @@
 #include "strata/core/on_device.hpp"
 #include "strata/core/peer_experts.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/expert_staging.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/kernels/bf16_gemv.hpp"
 #include "strata/kernels/native_router.hpp"
@@ -1005,8 +1006,21 @@ bool Verifier::record_window(int T, dpct::queue_ptr cs, std::string &err) {
                 // the layer's GGUF formats (i-quant gate/up, Q2_0 / IQ4_NL down)
                 const auto& f = lay.fmt[(size_t) l];
                 const NativeExpertLayout L = native_expert_layout(f.gu_type, f.d_type, f.n_embd, f.n_ff);
-                native_expert_grouped(L, gp, gs, gn, p_dst, p_tok, cap, cap,
-                                      nat_xq_ + (size_t) tb * (N / 32) * 36, hit_scratch_, hit_out, cs, gy);
+                if (gy == 0 && device_plan_ && env_on("STRATA_VERIFY_NO_HOST") &&
+                    env_on("STRATA_SYCL_EXPERT_STAGE")) {
+                    // NoHost device planning leaves no CPU/DMA owner of this existing workspace.
+                    const int64_t per = G == 2 ? kStagingBlobs / 2 : kStagingBlobs;
+                    uint8_t* stage = staging_ + (size_t)(grp * per) * lay.max_blob;
+                    const char* batch_env = std::getenv("STRATA_SYCL_EXPERT_STAGE_GROUPS");
+                    const char* copy_env = std::getenv("STRATA_SYCL_EXPERT_STAGE_COPY");
+                    native_expert_grouped_staged(L,gp,gs,gn,p_dst,p_tok,cap,cap,
+                        nat_xq_ + (size_t)tb * (N / 32) * 36,hit_scratch_,hit_out,cs,
+                        stage,(size_t)per * lay.max_blob,batch_env ? std::atoi(batch_env) : 8,
+                        copy_env ? std::atoi(copy_env) : 0);
+                } else {
+                    native_expert_grouped(L, gp, gs, gn, p_dst, p_tok, cap, cap,
+                                          nat_xq_ + (size_t) tb * (N / 32) * 36, hit_scratch_, hit_out, cs, gy);
+                }
             } else {
                 moe_grouped_s2(gp, gs, gn, p_dst, p_tok, cap, cap, hit_xq_ + (size_t) tb * (N / 32) * 34,
                                hit_xs_ + (size_t) tb * (N / 32), hit_scratch_, hit_out, cs);

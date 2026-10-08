@@ -15,6 +15,9 @@
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 #include "strata/kernels/q2_0_decode.hpp"
+#include "strata/kernels/expert_staging.hpp"
+#include "strata/kernels/verify_kernels.hpp"
+#include "strata/kernels/iq_signed_grid.hpp"
 
 #define GGML_COMMON_DECL_SYCL
 #define GGML_COMMON_IMPL_SYCL
@@ -126,10 +129,11 @@ __dpct_inline__ int swar_ne4(unsigned x) { return dpct::vectorized_binary<sycl::
 __dpct_inline__ int swar_sub4(unsigned a, unsigned s) { return dpct::vectorized_binary<sycl::uchar4>(a, s, std::minus<>()); }
 #endif
 
+template <bool PackedSigns = false>
 __dpct_inline__ float vec_dot_iq2_xxs_q8_1(const void *__restrict__ vbq,
                                            const block_q8_1 *__restrict__ bq8_1,
                                            const int &kbx, const int &iqs) {
-    const block_iq2_xxs* bq2 = (const block_iq2_xxs*) vbq + kbx;
+    const block_iq2_xxs* bq2 = PackedSigns ? iq_signed_grid::block_at<block_iq2_xxs>(vbq, uint32_t(kbx)) : (const block_iq2_xxs*) vbq + kbx;
     const int q2 = get_int_b2(bq2->qs, iqs);
     const uint8_t* aux8 = (const uint8_t*) &q2;
     const uint32_t aux32 = get_int_b2(bq2->qs, iqs + 1);
@@ -140,11 +144,11 @@ __dpct_inline__ float vec_dot_iq2_xxs_q8_1(const void *__restrict__ vbq,
             ((const sycl::uint2 *)iq2xxs_grid)[aux8[k0 / 2]];
         const uint32_t signs = unpack_ksigns(aux32 >> (7 * k0 / 2));
         const int signs0 = swar_ne4(signs & 0x08040201);
-        const int grid0 = swar_sub4(grid_pos.x() ^ signs0, signs0);
+        const int grid0 = PackedSigns ? iq_signed_grid::apply(grid_pos.x(), signs) : swar_sub4(grid_pos.x() ^ signs0, signs0);
         const int u0 = get_int_b4(bq8_1[iqs / 2].qs, k0 + 0);
         sumi = ggml_cuda_dp4a(grid0, u0, sumi);
         const int signs1 = swar_ne4(signs & 0x80402010);
-        const int grid1 = swar_sub4(grid_pos.y() ^ signs1, signs1);
+        const int grid1 = PackedSigns ? iq_signed_grid::apply(grid_pos.y(), signs >> 4) : swar_sub4(grid_pos.y() ^ signs1, signs1);
         const int u1 = get_int_b4(bq8_1[iqs / 2].qs, k0 + 1);
         sumi = ggml_cuda_dp4a(grid1, u1, sumi);
     }
@@ -194,10 +198,11 @@ __dpct_inline__ float vec_dot_iq2_xs_q8_1(const void *__restrict__ vbq,
     return d * sumi;
 }
 
+template <bool PackedSigns = false>
 __dpct_inline__ float vec_dot_iq2_s_q8_1(const void *__restrict__ vbq,
                                          const block_q8_1 *__restrict__ bq8_1,
                                          const int &kbx, const int &iqs) {
-    const block_iq2_s* bq2 = (const block_iq2_s*) vbq + kbx;
+    const block_iq2_s* bq2 = PackedSigns ? iq_signed_grid::block_at<block_iq2_s>(vbq, uint32_t(kbx)) : (const block_iq2_s*) vbq + kbx;
     const int qs_packed = get_int_b2(bq2->qs, iqs / 2);
     const uint8_t* qs = (const uint8_t*) &qs_packed;
     const int qh = bq2->qh[iqs / 2];
@@ -213,8 +218,8 @@ __dpct_inline__ float vec_dot_iq2_s_q8_1(const void *__restrict__ vbq,
                 ((signs_packed_8[l0 / 2] & 0x0C) << 21));
         const int signs1 = swar_ne4(((signs_packed_8[l0 / 2] & 0x30) << 3) |
                 ((signs_packed_8[l0 / 2] & 0xC0) << 17));
-        const int grid_l = swar_sub4(grid_pos[0] ^ signs0, signs0);
-        const int grid_h = swar_sub4(grid_pos[1] ^ signs1, signs1);
+        const int grid_l = PackedSigns ? iq_signed_grid::apply(grid_pos[0], signs_packed_8[l0 / 2]) : swar_sub4(grid_pos[0] ^ signs0, signs0);
+        const int grid_h = PackedSigns ? iq_signed_grid::apply(grid_pos[1], signs_packed_8[l0 / 2] >> 4) : swar_sub4(grid_pos[1] ^ signs1, signs1);
         const int u0 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 0);
         const int u1 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 1);
         if (l0 < 4) {
@@ -641,6 +646,11 @@ template<> struct Fmt<23> { static constexpr int qk = 256, ipb = 8, step = 4;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq4_xs_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<22> { static constexpr int qk = 256, ipb = 8, step = 2;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq2_s_q8_1(v, y, kbx, iqs); } };
+// Private template dispatch key; GGUF still uses format 22.
+template<> struct Fmt<10022> : Fmt<22> {
+    static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq2_s_q8_1<true>(v, y, kbx, iqs); } };
+template<> struct Fmt<10016> : Fmt<16> {
+    static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq2_xxs_q8_1<true>(v, y, kbx, iqs); } };
 template<> struct Fmt<29> { static constexpr int qk = 256, ipb = 8, step = 1;
     static float dot(const void* v, const block_q8_1* y, int kbx, int iqs) { return vec_dot_iq1_m_q8_1(v, y, kbx, iqs); } };
 template<> struct Fmt<42> { static constexpr int qk = 64, ipb = 2, step = 1;
@@ -717,7 +727,7 @@ __dpct_inline__ float row_dot_lanes(const uint8_t *row, const block_q8_1 *x, int
     float s = 0.0f;
     for (int k = sub; k < nb * F::ipb; k += LANES) {
         const int kbx = k / F::ipb, iqs = F::step * (k % F::ipb);
-        s += F::dot(row, x + kbx * (F::qk / 32), kbx, iqs);
+        s += F::dot(row, (TY == 10016 || TY == 10022) ? iq_signed_grid::block_at<block_q8_1>(x, uint32_t(kbx * (F::qk / 32))) : x + kbx * (F::qk / 32), kbx, iqs);
     }
     return lanes_sum<LANES>(s);
 }
@@ -1229,10 +1239,10 @@ template <> struct Multi<18> {   // iq3_xxs
     }
 };
 
-template <> struct Multi<22> {   // iq2_s
+template <bool PackedSigns> struct IQ2SMulti {   // iq2_s
     static constexpr bool has = true; static constexpr int NW = 8;
     __dpct_inline__ static void prep(const void* vbq, int kbx, int iqs, MultiW& m, const void* grid = nullptr) {
-        const block_iq2_s* bq2 = (const block_iq2_s*) vbq + kbx;
+        const block_iq2_s* bq2 = PackedSigns ? iq_signed_grid::block_at<block_iq2_s>(vbq, uint32_t(kbx)) : (const block_iq2_s*) vbq + kbx;
 #if STRATA_IQ4NL_FAST
         const int qs_packed = load4_a2(bq2->qs + 4 * (iqs / 2));
         const int signs_packed_32 = load4_a2(bq2->qs + 4 * (QK_K / 32 + iqs / 2));
@@ -1250,8 +1260,8 @@ template <> struct Multi<22> {   // iq2_s
             const int* grid_pos = G ? (const int*) (G + gi) : (const int*) (iq2s_grid + gi);
             const int signs0 = swar_ne4(((sp[l0 / 2] & 0x03) << 7) | ((sp[l0 / 2] & 0x0C) << 21));
             const int signs1 = swar_ne4(((sp[l0 / 2] & 0x30) << 3) | ((sp[l0 / 2] & 0xC0) << 17));
-            m.w[l0 + 0] = swar_sub4(grid_pos[0] ^ signs0, signs0);
-            m.w[l0 + 1] = swar_sub4(grid_pos[1] ^ signs1, signs1);
+            m.w[l0 + 0] = PackedSigns ? iq_signed_grid::apply(grid_pos[0], sp[l0 / 2]) : swar_sub4(grid_pos[0] ^ signs0, signs0);
+            m.w[l0 + 1] = PackedSigns ? iq_signed_grid::apply(grid_pos[1], sp[l0 / 2] >> 4) : swar_sub4(grid_pos[1] ^ signs1, signs1);
         }
         m.a = bq2->scales[iqs / 2] & 0x0F;
         m.b = bq2->scales[iqs / 2] >> 4;
@@ -1266,6 +1276,9 @@ template <> struct Multi<22> {   // iq2_s
         return m.d * ds * (float) ((s0 * m.a + s1 * m.b + (s0 + s1) / 2) / 4);
     }
 };
+
+template <> struct Multi<22> : IQ2SMulti<false> {};
+template <> struct Multi<10022> : IQ2SMulti<true> {};
 
 template <> struct Multi<21> {   // iq3_s
     static constexpr bool has = true; static constexpr int NW = 8;
@@ -1387,7 +1400,7 @@ __dpct_inline__ void row_dot_multi(const uint8_t* row, const block_q8_1* const* 
         for (int e = 0; e < E; ++e) {
             int u[8];
             float ds;
-            M::acts(xs[e] + kbx * (F::qk / 32), iqs, u, ds);
+            M::acts(TY == 10022 ? iq_signed_grid::block_at<block_q8_1>(xs[e], uint32_t(kbx * (F::qk / 32))) : xs[e] + kbx * (F::qk / 32), iqs, u, ds);
             int s0 = 0, s1 = 0;
 #pragma unroll
             for (int j = 0; j < M::NW / 2; ++j) s0 = ggml_cuda_dp4a(m.w[j], u[j], s0);
@@ -1401,38 +1414,46 @@ __dpct_inline__ void row_dot_multi(const uint8_t* row, const block_q8_1* const* 
 }
 
 // The entries e0..e1 of one row: chunks of 4 through the multi-entry dot, the rest one at a time.
-template <int TY, int LANES, bool ReuseIQ2XXS = false>
+template <int TY, int LANES, bool ReuseIQ2XXS = false, bool Bounded = false>
 __dpct_inline__ void row_entries(const uint8_t* wr, const block_q8_1* x, int x_stride, const int32_t* ent_idx,
                                  int e0, int e1, int nb, int sub, float* dst, size_t dst_stride,
                                  const void* grid = nullptr) {
+    const auto activation = [=](int e) {
+        if constexpr (Bounded) return iq_signed_grid::block_at<block_q8_1>(x, uint32_t(ent_idx[e]) * uint32_t(x_stride));
+        else return x + (size_t) ent_idx[e] * x_stride;
+    };
+    const auto output_offset = [=](int e) -> size_t {
+        if constexpr (Bounded) return uint32_t(e) * uint32_t(dst_stride);
+        else return (size_t)e * dst_stride;
+    };
     int e = e0;
     if constexpr (Multi<TY>::has && (TY != 16 || ReuseIQ2XXS)) {
         for (; e + 4 <= e1; e += 4) {
-            const block_q8_1* xs[4] = {x + (size_t) ent_idx[e] * x_stride, x + (size_t) ent_idx[e + 1] * x_stride,
-                                       x + (size_t) ent_idx[e + 2] * x_stride, x + (size_t) ent_idx[e + 3] * x_stride};
+            const block_q8_1* xs[4] = {activation(e), activation(e + 1),
+                                       activation(e + 2), activation(e + 3)};
             float o[4];
             row_dot_multi<TY, LANES, 4>(wr, xs, nb, sub, o, grid);
             if (sub == 0)
 #pragma unroll
-                for (int i = 0; i < 4; ++i) dst[(size_t) (e + i) * dst_stride] = o[i];
+                for (int i = 0; i < 4; ++i) dst[output_offset(e + i)] = o[i];
         }
         if (e + 2 <= e1) {
-            const block_q8_1* xs[2] = {x + (size_t) ent_idx[e] * x_stride, x + (size_t) ent_idx[e + 1] * x_stride};
+            const block_q8_1* xs[2] = {activation(e), activation(e + 1)};
             float o[2];
             row_dot_multi<TY, LANES, 2>(wr, xs, nb, sub, o, grid);
-            if (sub == 0) { dst[(size_t) e * dst_stride] = o[0]; dst[(size_t) (e + 1) * dst_stride] = o[1]; }
+            if (sub == 0) { dst[output_offset(e)] = o[0]; dst[output_offset(e + 1)] = o[1]; }
             e += 2;
         }
     }
     for (; e < e1; ++e) {
-        const float v = row_dot_lanes<TY, LANES>(wr, x + (size_t) ent_idx[e] * x_stride, nb, sub);
-        if (sub == 0) dst[(size_t) e * dst_stride] = v;
+        const float v = row_dot_lanes<TY, LANES>(wr, activation(e), nb, sub);
+        if (sub == 0) dst[output_offset(e)] = v;
     }
 }
 
 constexpr int GU_ROWS = 8;     // rows per block (one warp each)
 
-template <int TG, int LN = kExpertLanes, bool ReuseIQ2XXS = false>
+template <int TG, int LN = kExpertLanes, bool ReuseIQ2XXS = false, bool FixedShape = false>
 __dpct_inline__ void native_gu_kernel(
     const unsigned long long *__restrict__ grp_ptr,
     const int32_t *__restrict__ grp_start, const int32_t *__restrict__ n_groups,
@@ -1461,15 +1482,16 @@ __dpct_inline__ void native_gu_kernel(
     const int rib = item_ct1.get_local_id(2) / LN,
               sub = item_ct1.get_local_id(2) % LN;
     const int row = item_ct1.get_group(2) * (256 / LN) + rib; // 0 .. 2*n_ff
-    if (row >= 2 * L.n_ff) return;
-    const bool is_up = row >= L.n_ff;
-    const int r = is_up ? row - (int) L.n_ff : row;
-    const size_t off = (is_up ? L.up_off : 0) + (size_t) r * L.gu_row;
-    const int nb = (int) (L.n_embd / Fmt<TG>::qk), xb = (int) (L.n_embd / 32);
+    const int64_t ff = FixedShape ? 640 : L.n_ff;
+    if (row >= 2 * ff) return;
+    const bool is_up = row >= ff;
+    const int r = is_up ? row - (int) ff : row;
+    const size_t off = FixedShape ? uint32_t((is_up ? 640 : 0) + r) * uint32_t(TG == 10022 ? 820 : 660) : (is_up ? L.up_off : 0) + (size_t) r * L.gu_row;
+    const int nb = FixedShape ? 10 : (int) (L.n_embd / Fmt<TG>::qk), xb = FixedShape ? 80 : (int) (L.n_embd / 32);
     for (int g = (int) item_ct1.get_group(1); g < ng; g += (int) item_ct1.get_group_range(1)) {
         const uint8_t* wr = (const uint8_t*) grp_ptr[g] + off;
         const int e0 = grp_start[g], e1 = grp_start[g + 1];
-        row_entries<TG, LN, ReuseIQ2XXS>(wr, xq, xb, ent_tok, e0, e1, nb, sub, (is_up ? up : gate) + r, (size_t) L.n_ff, grid);
+        row_entries<TG, LN, ReuseIQ2XXS, FixedShape>(wr, xq, xb, ent_tok, e0, e1, nb, sub, (is_up ? up : gate) + r, (size_t) ff, grid);
     }
 }
 
@@ -2085,6 +2107,7 @@ bool g_old_kernels = env_on("STRATA_OLD_IQ_MMVQ");
 bool g_split_multi = env_on("STRATA_EXPERT_SPLIT");
 bool g_q2_word_expand = env_on("STRATA_SYCL_Q2_WORD_EXPAND");
 
+
 template <int TY>
 void launch_mmvq(const uint8_t *W, size_t rb, const block_q8_1 *X, float *y,
                  int n_in, int n_out, int ncols, dpct::queue_ptr s) {
@@ -2251,10 +2274,35 @@ void launch_gu_iq2xxs_reuse(unsigned groups, dpct::queue_ptr stream, const unsig
         [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { native_gu_kernel<16, lanes, true>(ptr, start, count, tok, x, layout, gate, up); });
 }
 
+
+template <int TG>
+void launch_gu_packed_fixed(unsigned groups, dpct::queue_ptr s, const unsigned long long* pointers,
+                             const int32_t* starts, const int32_t* count, const int32_t* tokens,
+                             const block_q8_1* x, NativeExpertLayout layout, float* gate, float* up) {
+    auto properties = sycl::ext::oneapi::experimental::properties{sycl::ext::oneapi::experimental::use_root_sync};
+    s->parallel_for<dpct_kernel_name<class gu_packed_fixed, dpct_kernel_scalar<TG>>>(
+        sycl::nd_range<3>(sycl::range<3>(1,groups,40*256),sycl::range<3>(1,1,256)),properties,
+        [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { native_gu_kernel<TG,8,false,true>(pointers,starts,count,tokens,x,layout,gate,up); });
+}
+
 template <int TG, int LN>
 void launch_gu_port(unsigned groups, dpct::queue_ptr s, const unsigned long long *grp_ptr, const int32_t *grp_start,
                     const int32_t *n_groups, const int32_t *ent_tok, const block_q8_1 *X,
-                    const NativeExpertLayout &L, float *gate, float *up) {
+                    const NativeExpertLayout &L, float *gate, float *up, bool bounded = false) {
+    if constexpr (TG == 16 && LN == 8) {
+        if (env_on("STRATA_SYCL_PACKED_SIGNS") && !g_old_kernels && !g_split_multi && !g_iq2xxs_reuse && bounded &&
+            L.n_embd == 2560 && L.n_ff == 640 && L.gu_row == 660 && L.up_off == 640 * 660) {
+            launch_gu_packed_fixed<10016>(groups, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
+            return;
+        }
+    }
+    if constexpr (TG == 22 && LN == 8) {
+        if (env_on("STRATA_SYCL_PACKED_SIGNS") && !g_old_kernels && !g_split_multi && bounded &&
+            L.n_embd == 2560 && L.n_ff == 640 && L.gu_row == 820 && L.up_off == 640 * 820) {
+            launch_gu_packed_fixed<10022>(groups, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
+            return;
+        }
+    }
     if constexpr (TG == 16 && LN == 8) {
         if (g_iq2xxs_reuse) { launch_gu_iq2xxs_reuse(groups, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); return; }
     }
@@ -2270,12 +2318,12 @@ void launch_gu_port(unsigned groups, dpct::queue_ptr s, const unsigned long long
 template <int TG>
 void launch_gu_lanes(dpct::dim3 grid, dpct::queue_ptr s, const unsigned long long *grp_ptr, const int32_t *grp_start,
                      const int32_t *n_groups, const int32_t *ent_tok, const block_q8_1 *X,
-                     const NativeExpertLayout &L, float *gate, float *up) {
+                     const NativeExpertLayout &L, float *gate, float *up, bool bounded = false) {
     switch (gu_lanes()) {
-        case 4: launch_gu_port<TG, 4>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
-        case 16: launch_gu_port<TG, 16>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
-        case 32: launch_gu_port<TG, 32>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
-        default: launch_gu_port<TG, 8>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
+        case 4: launch_gu_port<TG, 4>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded); break;
+        case 16: launch_gu_port<TG, 16>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded); break;
+        case 32: launch_gu_port<TG, 32>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded); break;
+        default: launch_gu_port<TG, 8>(grid.y, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded); break;
     }
 }
 template <int TD, int LN>
@@ -2308,13 +2356,13 @@ void launch_gu(dpct::dim3 grid, dpct::queue_ptr s,
                const unsigned long long *grp_ptr, const int32_t *grp_start,
                const int32_t *n_groups, const int32_t *ent_tok,
                const block_q8_1 *X, const NativeExpertLayout &L, float *gate,
-               float *up) {
+               float *up, bool bounded) {
     if constexpr (!kSplit<TG>) {
 
-        launch_gu_lanes<TG>(grid, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
+        launch_gu_lanes<TG>(grid, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded);
     } else if (g_old_kernels || !g_split_multi) {
 
-        launch_gu_lanes<TG>(grid, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up);
+        launch_gu_lanes<TG>(grid, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, bounded);
     } else {
 
         auto exp_props = sycl::ext::oneapi::experimental::properties{
@@ -2729,7 +2777,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     const dpct::dim3 ggu((unsigned)((2 * L.n_ff + kExpertRows - 1) / kExpertRows),
                          (unsigned)gy);
     switch (L.gu_type) {
-#define STRATA_GU(T) case T: launch_gu<T>(ggu, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
+#define STRATA_GU(T) case T: launch_gu<T>(ggu, s, grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up, cap_entries <= 80); break;
         STRATA_GU_FMTS(STRATA_GU)
 #undef STRATA_GU
         default: std::fprintf(stderr, "native_expert_grouped: gate/up type %d\n", L.gu_type); std::exit(1);
@@ -2950,3 +2998,118 @@ bool xmx_gemm_iq(int ty, const void* gate, const void* up, int64_t K, int n_out,
     return true;
 }
 }  // namespace strata::kernels
+
+namespace strata::kernels {
+namespace {
+constexpr int kExpertStageMaxGroups = 16;
+class ExpertStagePlan;
+class ExpertStageCopy;
+struct ExpertStageMetadata {
+    unsigned long long* pointers;
+    int32_t *starts, *groups, *tokens, *destinations;
+};
+ExpertStageMetadata stage_metadata(void* scratch, int64_t cap, int64_t ff) {
+    const size_t floats = ((size_t)cap * ff * sizeof(float) + 255) & ~size_t(255);
+    // The original v2 path does not use its third float array.
+    // 16 pointers + 17 starts + count + two cap-entry maps fit far below cap*640 floats.
+    auto* base = static_cast<uint8_t*>(scratch) + 2 * floats;
+    auto* pointers = reinterpret_cast<unsigned long long*>(base);
+    auto* starts = reinterpret_cast<int32_t*>(pointers + kExpertStageMaxGroups);
+    auto* groups = starts + kExpertStageMaxGroups + 1;
+    auto* tokens = groups + 1;
+    return {pointers, starts, groups, tokens, tokens + cap};
+}
+void prepare_expert_stage(sycl::queue& q, const unsigned long long* pointers,
+                         const int32_t* starts, const int32_t* groups,
+                         const int32_t* destinations, const int32_t* tokens,
+                         int begin, int batch, int capacity, ExpertStageMetadata meta) {
+    auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    q.parallel_for<ExpertStagePlan>(sycl::nd_range<1>(256,256), properties,
+        [=](sycl::nd_item<1> item) [[sycl::reqd_sub_group_size(32)]] {
+            const int tid = item.get_local_linear_id();
+            const int remaining = *groups - begin;
+            const int count = remaining > 0 ? sycl::min(remaining,batch) : 0;
+            if (tid == 0) {
+                *meta.groups = count;
+                if (count == 0) meta.starts[0] = 0;
+            }
+            if (count == 0) return;
+            const int first = starts[begin], end = starts[begin+count];
+            if (tid < count) {
+                meta.pointers[tid] = pointers[begin+tid];
+                meta.starts[tid] = starts[begin+tid] - first;
+            }
+            if (tid == count) meta.starts[count] = end - first;
+            if (tid < end-first && tid < capacity) {
+                meta.tokens[tid] = tokens[first+tid];
+                meta.destinations[tid] = destinations[first+tid];
+            }
+        });
+}
+void copy_expert_stage_tiled(sycl::queue& q, const unsigned long long* pointers,
+                            const int32_t* groups, uint8_t* workspace,
+                            size_t blob_bytes, int batch) {
+    const size_t words = blob_bytes / 16;
+    const size_t rounded = (words + 255) & ~size_t(255);
+    auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    q.parallel_for<ExpertStageCopy>(
+        sycl::nd_range<3>(sycl::range<3>(1,batch,rounded),sycl::range<3>(1,1,256)),
+        properties, [=](sycl::nd_item<3> item) [[sycl::reqd_sub_group_size(32)]] {
+            const int group = item.get_group(1);
+            if (group >= *groups) return;
+            const size_t word = item.get_global_id(2);
+            if (word >= words) return;
+            const auto* source = reinterpret_cast<const uint32_t*>(pointers[group]);
+            auto* target = reinterpret_cast<uint32_t*>(workspace + size_t(group)*blob_bytes);
+            sycl::vec<uint32_t,4> value;
+            value.load(word,source); value.store(word,target);
+        });
+}
+bool stage_layout(const NativeExpertLayout& l) {
+    if (l.n_embd != 2560 || l.n_ff != 640 || l.d_type != 42 || l.d_row != 180) return false;
+    const size_t row = l.gu_type == 16 ? 660 : l.gu_type == 22 ? 820 : l.gu_type == 29 ? 560 : 0;
+    return row != 0 && l.gu_row == row && l.up_off == 640*row &&
+           l.down_off == 2*l.up_off && l.bytes == l.down_off + 2560*180 &&
+           l.bytes % 16 == 0;
+}
+} // namespace
+
+void native_expert_grouped_staged(
+    const NativeExpertLayout& l, const unsigned long long* pointers,
+    const int32_t* starts, const int32_t* groups, const int32_t* destinations,
+    const int32_t* tokens, int64_t cap_groups, int64_t cap_entries,
+    const void* x_q8_1, void* scratch, float* output, void* stream,
+    void* workspace, size_t workspace_bytes, int max_batch_groups, int copy_mode) {
+    auto* q = strata::q_of(stream);
+    if (!stage_layout(l) || g_grouped_v1 || cap_groups <= 0 || cap_groups > 80 ||
+        cap_entries <= 0 || cap_entries > 80 || !workspace ||
+        (reinterpret_cast<uintptr_t>(scratch) & 15) ||
+        (reinterpret_cast<uintptr_t>(workspace) & 15) ||
+        !q->has_property<sycl::property::queue::in_order>() ||
+        max_batch_groups < 1 || max_batch_groups > kExpertStageMaxGroups ||
+        workspace_bytes < l.bytes) {
+        native_expert_grouped(l,pointers,starts,groups,destinations,tokens,
+                             cap_groups,cap_entries,x_q8_1,scratch,output,stream);
+        return;
+    }
+    const int batch = int(std::min<size_t>(size_t(max_batch_groups), workspace_bytes/l.bytes));
+    auto meta = stage_metadata(scratch,cap_entries,l.n_ff);
+    for (int first = 0; first < cap_groups; first += batch) {
+        prepare_expert_stage(*q,pointers,starts,groups,destinations,tokens,
+                             first,batch,(int)cap_entries,meta);
+        if (copy_mode == 0)
+            fetch_blobs(meta.pointers,meta.groups,static_cast<uint8_t*>(workspace),
+                        (int64_t)l.bytes,batch,stream);
+        else
+            copy_expert_stage_tiled(*q,meta.pointers,meta.groups,
+                                   static_cast<uint8_t*>(workspace),l.bytes,batch);
+        rebase_ptrs(meta.pointers,meta.groups,static_cast<uint8_t*>(workspace),
+                    (int64_t)l.bytes,stream);
+        native_expert_grouped(l,meta.pointers,meta.starts,meta.groups,
+                             meta.destinations,meta.tokens,cap_groups,cap_entries,
+                             x_q8_1,scratch,output,stream,std::min<int64_t>(batch,cap_groups));
+    }
+}
+} // namespace strata::kernels
