@@ -2824,29 +2824,6 @@ bool g_grouped_v1 = env_on("STRATA_GROUPED_V1");
 }  // namespace
 
 void native_grouped_set_v1(bool v1) { g_grouped_v1 = v1; }
-void native_expert_set_iq2xxs_reuse(bool enabled) { g_iq2xxs_reuse = enabled; }
-
-void native_expert_down_q2_probe(bool candidate, const NativeExpertLayout& layout,
-                               const unsigned long long* pointers, const int32_t* starts,
-                               const int32_t* groups, const int32_t* destinations,
-                               const void* h_q8_1, float* output, int64_t capacity, void* stream) {
-    if (layout.d_type != 42 || capacity <= 0 || !pointers || !starts || !groups || !destinations || !h_q8_1 || !output || !stream)
-        throw std::invalid_argument("Q2_0 down probe contract");
-    if (candidate) launch_down_port<10042,8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, destinations,
-                                            static_cast<const block_q8_1*>(h_q8_1), layout, output);
-    else launch_down_port<42,8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, destinations,
-                                static_cast<const block_q8_1*>(h_q8_1), layout, output);
-    check("Q2_0 down probe");
-}
-
-void native_expert_gu_probe(const NativeExpertLayout& layout, const unsigned long long* pointers,
-                            const int32_t* starts, const int32_t* groups, const int32_t* tokens,
-                            const void* x_q8_1, float* gate, float* up, int64_t capacity, void* stream) {
-    if (layout.gu_type != 16 || capacity <= 0) throw std::invalid_argument("IQ2_XXS GU probe contract");
-    launch_gu_port<16, 8>((unsigned)capacity, strata::q_of(stream), pointers, starts, groups, tokens,
-                          static_cast<const block_q8_1*>(x_q8_1), layout, gate, up);
-    check("IQ2_XXS GU probe");
-}
 
 void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long* grp_ptr, const int32_t* grp_start,
                            const int32_t* n_groups, const int32_t* ent_dst, const int32_t* ent_tok, int64_t cap_groups,

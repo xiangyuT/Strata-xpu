@@ -58,6 +58,38 @@ __dpct_inline__ float warp_sum(float v) {
             o);
     return v;
 }
+
+int g_gr_cached_norm_mode=[](){
+    const char* e=std::getenv("STRATA_SYCL_GR_CACHED_NORM");
+    return e&&std::atoi(e)==3?3:0;
+}();
+bool gr_overlap(const void* a,size_t as,const void* b,size_t bs){
+    if(!a||!b||!as||!bs)return false;
+    const uintptr_t av=reinterpret_cast<uintptr_t>(a),bv=reinterpret_cast<uintptr_t>(b);
+    return av<=bv?bv-av<as:av-bv<bs;
+}
+bool gr_cached_norm_safe(const FusedGrArgs* a,int T,const float* xn){
+    for(int k=0;k<T;++k){
+        if(!a[k].apply)continue;
+        const auto* out=a[k].R_out;
+        if(!out||(reinterpret_cast<uintptr_t>(out)&15u)||gr_overlap(out,D*4,xn,size_t(T)*D*4))return false;
+        for(int j=0;j<T;++j){
+            if(!(j==k&&out==a[j].R)&&gr_overlap(out,D*4,a[j].R,D*4))return false;
+            if(j!=k&&a[j].apply&&gr_overlap(out,D*4,a[j].R_out,D*4))return false;
+            if(gr_overlap(out,D*4,a[j].bo_prev,N*4)||
+               gr_overlap(out,D*4,a[j].inj_prev,HC*4)||
+               gr_overlap(out,D*4,a[j].w_norm,D*4)||
+               gr_overlap(out,D*4,a[j].w_down,size_t(LR)*D*2)||
+               gr_overlap(out,D*4,a[j].w_up,size_t(D)*LR*2)||
+               gr_overlap(out,D*4,a[j].w_inject,size_t(HC)*D*2)||
+               gr_overlap(out,D*4,a[j].lo,LR*4)||
+               gr_overlap(out,D*4,a[j].rs,HC*4)||
+               gr_overlap(out,D*4,a[j].inject_out,HC*4)||
+               gr_overlap(out,D*4,a[j].mixed,N*4))return false;
+        }
+    }
+    return true;
+}
 __dpct_inline__ float sigmoidf_(float x) {
     return 1.0f / (1.0f + sycl::native::exp(-x));
 }
@@ -422,6 +454,55 @@ __dpct_inline__ void gr_norm_bounds_port_kernel(GrMulti m) {
         *reinterpret_cast<sycl::float4*>(xn + i) = sycl::float4(x.x() * rs, x.y() * rs, x.z() * rs, x.w() * rs);
     }
 }
+// Cached normalized product with the original optional pending write.
+__dpct_inline__ void gr_norm_cached_write_kernel(GrMulti m) {
+    auto item = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+    auto& part = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARPS]>(item.get_group());
+    auto& s_rs = *sycl::ext::oneapi::group_local_memory_for_overwrite<float>(item.get_group());
+    const int tok = (int) item.get_group(2) / HC, c = (int) item.get_group(2) % HC;
+    const FusedGrArgs& a = m.a[tok];
+    float* xn = m.xn + (size_t) tok * D;
+    const int t = (int) item.get_local_id(2), lane = t & 31, warp = t >> 5;
+    const float gw = a.apply ? 2.0f * sigmoidf_(a.inj_prev[c] / (float) HC) : 0.0f;
+    constexpr int MAXK = (N + THREADS * 4 - 1) / (THREADS * 4) + 1;   // 3: float4s of one stream per thread
+    sycl::float4 keep[MAXK];
+    int kept = 0;
+    float ss = 0.0f;
+    const int first_i = t * 4 + ((c * N - t * 4 + THREADS * 4 - 1) / (THREADS * 4)) * (THREADS * 4);
+    const int end_i = (c + 1) * N;
+    for (int i = first_i; i < end_i; i += THREADS * 4) {
+        const int d = i - c * N;
+        sycl::float4 r = *reinterpret_cast<const sycl::float4*>(a.R + i);
+        if (a.apply) {
+            const sycl::float4 b = *reinterpret_cast<const sycl::float4*>(a.bo_prev + d);
+            r.x() = sycl::fma((float) (b.x()), gw, r.x());
+            r.y() = sycl::fma((float) (b.y()), gw, r.y());
+            r.z() = sycl::fma((float) (b.z()), gw, r.z());
+            r.w() = sycl::fma((float) (b.w()), gw, r.w());
+        }
+        if(a.apply)*reinterpret_cast<sycl::float4*>(a.R_out+i)=r;
+        const sycl::float4 g = *reinterpret_cast<const sycl::float4*>(a.w_norm + i);
+        ss += r.x() * r.x() + r.y() * r.y() + r.z() * r.z() + r.w() * r.w();
+        if (kept < MAXK) keep[kept++] = sycl::float4(r.x() * g.x(), r.y() * g.y(), r.z() * g.z(), r.w() * g.w());
+    }
+    const float v = warp_sum(ss);
+    if (lane == 0) part[warp] = v;
+    item.barrier(sycl::access::fence_space::local_space);
+    if (t == 0) {
+        float sum = 0.0f;
+#pragma unroll
+        for (int w = 0; w < WARPS; ++w) sum += part[w];
+        s_rs = sycl::rsqrt(sum / (float) N + a.eps);
+        a.rs[c] = s_rs;
+    }
+    item.barrier(sycl::access::fence_space::local_space);
+    const float rs = s_rs;
+    int k = 0;
+    for (int i = first_i; i < end_i && k < kept; i += THREADS * 4) {
+        const sycl::float4 x = keep[k++];
+        *reinterpret_cast<sycl::float4*>(xn + i) = sycl::float4(x.x() * rs, x.y() * rs, x.z() * rs, x.w() * rs);
+    }
+}
 const bool g_gr_norm_direct_bounds = [] {
     const char* value = std::getenv("STRATA_SYCL_GR_NORM_BOUNDS");
     return value && value[0] == '1';
@@ -764,6 +845,161 @@ auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
 #pragma unroll
         for (int c = 0; c < HC; ++c) s += g[k][c][col];
         m.a[k].mixed[d0 + col] = s / (float) HC;
+    }
+}
+
+// Consume the normalized product without changing its multiply order.
+template<bool LoReady = false>
+__dpct_inline__ void gr_up_cached_norm_kernel(GrMulti m) {
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+    float[kFusedGrMaxT][LR]>(
+    sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    auto &g = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+        float[kFusedGrMaxT][HC][UPM_COLS]>(
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    const int t = item_ct1.get_local_id(2), lane = t & 31, warp = t >> 5;
+    const int T = m.T;
+    const int d0 = item_ct1.get_group(2) * UPM_COLS;
+#pragma unroll
+    for (int i = t; i < T * LR; i += THREADS) {   // the down kernel's partial sums, in split order, then silu
+        const int k = i / LR, r = i % LR;
+        if constexpr (LoReady) {
+            lo[k][r] = m.a[k].lo[r];
+        } else {
+            float x = 0.0f;
+#pragma unroll
+            for (int sp = 0; sp < DOWN_SPLIT; ++sp) if (sp < m.nsplit) x += m.part[((size_t) sp * kFusedGrMaxT + k) * LR + r];
+            x /= (float) HC;
+            const float v = x / (1.0f + sycl::native::exp(-x));
+            lo[k][r] = v;
+            m.a[k].lo[r] = v;
+        }
+    }
+    /*
+    DPCT1065: Consider replacing sycl::nd_item::barrier() with
+    sycl::nd_item::barrier(sycl::access::fence_space::local_space) for better
+    performance if there is no access to global memory.
+    */
+    item_ct1.barrier();
+    for (int r = warp; r < HC * UPM_COLS; r += WARPS) {
+        const int c = r / UPM_COLS, dd = r - c * UPM_COLS, i = c * N + d0 + dd;
+        const sycl::uint4 *w4 =
+            reinterpret_cast<const sycl::uint4 *>(m.a[0].w_up + (size_t)i * LR);
+        /*
+        DPCT1098: The '*' expression is used instead of the __ldg call.
+        These two expressions do not provide the exact same functionality. Check
+        the generated code for potential precision and/or performance issues.
+        */
+        const sycl::uint4 wa = *(w4 + lane);
+        /*
+        DPCT1098: The '*' expression is used instead of the __ldg call.
+        These two expressions do not provide the exact same functionality. Check
+        the generated code for potential precision and/or performance issues.
+        */
+        const sycl::uint4 wb =
+            lane < LR / 8 - 32 ? *(w4 + 32 + lane) : sycl::uint4(0, 0, 0, 0);
+        float normalized=0.f;
+        if(lane<T)normalized=m.xn[size_t(lane)*D+i];
+        float mine = 0.0f;
+#pragma unroll
+        for (int k = 0; k < kFusedGrMaxT; ++k) {
+            if (k >= T) break;
+            float acc = dot8(wa, lo[k] + lane * 8);
+            if (lane < LR / 8 - 32) acc += dot8(wb, lo[k] + (32 + lane) * 8);
+            acc = warp_sum(acc);
+            if (lane == k) mine = acc;
+        }
+        if(lane<T)g[lane][c][dd]=normalized*sigmoidf_(mine);
+    }
+    /*
+    DPCT1065: Consider replacing sycl::nd_item::barrier() with
+    sycl::nd_item::barrier(sycl::access::fence_space::local_space) for better
+    performance if there is no access to global memory.
+    */
+    item_ct1.barrier();
+    for (int i = t; i < T * UPM_COLS; i += THREADS) {
+        const int k = i / UPM_COLS, col = i - k * UPM_COLS;
+        float s = 0.0f;
+#pragma unroll
+        for (int c = 0; c < HC; ++c) s += g[k][c][col];
+        m.a[k].mixed[d0 + col] = s / (float) HC;
+    }
+}
+
+// Pass only the fields used by the prepared-up kernel.
+struct GrUpCompactReady {
+    const uint16_t* w_up;
+    const float* xn;
+    const float* lo[kFusedGrMaxT];
+    float* mixed[kFusedGrMaxT];
+    int T;
+};
+static_assert(sizeof(GrUpCompactReady)==152);
+__dpct_inline__ void gr_up_compact_ready_kernel(GrUpCompactReady m) {
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+auto &lo = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+    float[kFusedGrMaxT][LR]>(
+    sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    auto &g = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+        float[kFusedGrMaxT][HC][UPM_COLS]>(
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    const int t = item_ct1.get_local_id(2), lane = t & 31, warp = t >> 5;
+    const int T = m.T;
+    const int d0 = item_ct1.get_group(2) * UPM_COLS;
+#pragma unroll
+    for (int i = t; i < T * LR; i += THREADS) {   // the down kernel's partial sums, in split order, then silu
+        const int k = i / LR, r = i % LR;
+        lo[k][r]=m.lo[k][r];
+    }
+    /*
+    DPCT1065: Consider replacing sycl::nd_item::barrier() with
+    sycl::nd_item::barrier(sycl::access::fence_space::local_space) for better
+    performance if there is no access to global memory.
+    */
+    item_ct1.barrier();
+    for (int r = warp; r < HC * UPM_COLS; r += WARPS) {
+        const int c = r / UPM_COLS, dd = r - c * UPM_COLS, i = c * N + d0 + dd;
+        const sycl::uint4 *w4 =
+            reinterpret_cast<const sycl::uint4 *>(m.w_up + (size_t)i * LR);
+        /*
+        DPCT1098: The '*' expression is used instead of the __ldg call.
+        These two expressions do not provide the exact same functionality. Check
+        the generated code for potential precision and/or performance issues.
+        */
+        const sycl::uint4 wa = *(w4 + lane);
+        /*
+        DPCT1098: The '*' expression is used instead of the __ldg call.
+        These two expressions do not provide the exact same functionality. Check
+        the generated code for potential precision and/or performance issues.
+        */
+        const sycl::uint4 wb =
+            lane < LR / 8 - 32 ? *(w4 + 32 + lane) : sycl::uint4(0, 0, 0, 0);
+        float normalized=0.f;
+        if(lane<T)normalized=m.xn[size_t(lane)*D+i];
+        float mine = 0.0f;
+#pragma unroll
+        for (int k = 0; k < kFusedGrMaxT; ++k) {
+            if (k >= T) break;
+            float acc = dot8(wa, lo[k] + lane * 8);
+            if (lane < LR / 8 - 32) acc += dot8(wb, lo[k] + (32 + lane) * 8);
+            acc = warp_sum(acc);
+            if (lane == k) mine = acc;
+        }
+        if(lane<T)g[lane][c][dd]=normalized*sigmoidf_(mine);
+    }
+    /*
+    DPCT1065: Consider replacing sycl::nd_item::barrier() with
+    sycl::nd_item::barrier(sycl::access::fence_space::local_space) for better
+    performance if there is no access to global memory.
+    */
+    item_ct1.barrier();
+    for (int i = t; i < T * UPM_COLS; i += THREADS) {
+        const int k = i / UPM_COLS, col = i - k * UPM_COLS;
+        float s = 0.0f;
+#pragma unroll
+        for (int c = 0; c < HC; ++c) s += g[k][c][col];
+        m.mixed[k][d0 + col] = s / (float) HC;
     }
 }
 
@@ -1674,7 +1910,7 @@ std::atomic<int> g_variant[64];
 
 // one partials buffer per queue (the verifier's and the drafter's launches never share a queue; within a queue the
 // launches are ordered, and a graph capture records the pointer)
-void fused_gr_set_lo_once(bool enabled) { g_gr_lo_once = enabled; }
+
 
 static float* down_partials(sycl::queue* q) {
     static std::mutex mu;
@@ -1838,12 +2074,18 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
 
         return false;  // This SYCL read does not write the optional q8_1 images.
     }
+    const bool cached_norm=g_gr_cached_norm_mode>0&&g_gr_norm_direct_bounds&&gr_norm_split()&&
+        gr_down_sliced()&&gr_cached_norm_safe(a,n_tok,xn_scratch);
     m.part = down_partials(st);
     {
         auto exp_props = sycl::ext::oneapi::experimental::properties{
             sycl::ext::oneapi::experimental::use_root_sync};
 
-        if (g_gr_norm_direct_bounds && gr_norm_split())
+        if(cached_norm)
+            st->parallel_for<dpct_kernel_name<class gr_norm_cached_write>>(
+                sycl::nd_range<3>(sycl::range(1,1,n_tok*HC)*sycl::range(1,1,THREADS),sycl::range(1,1,THREADS)),
+                [=](sycl::nd_item<3>)[[sycl::reqd_sub_group_size(32)]]{gr_norm_cached_write_kernel(m);});
+        else if (g_gr_norm_direct_bounds && gr_norm_split())
             st->parallel_for<dpct_kernel_name<class gr_norm_bounds_k>>(
                 sycl::nd_range<3>(sycl::range(1, 1, n_tok * HC) * sycl::range(1, 1, THREADS), sycl::range(1, 1, THREADS)),
                 [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_norm_bounds_port_kernel(m); });
@@ -1878,7 +2120,7 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
         attr[dev] = true;
     }
     const int chunk_tok = (dev >= 0 && dev < 64 && chunk[dev]) ? chunk[dev] : kFusedGrMaxT;
-    const bool lo_once = g_gr_lo_once && gr_down_sliced();
+    const bool lo_once = (g_gr_lo_once||(cached_norm&&g_gr_cached_norm_mode>=2))&&gr_down_sliced();
     if (gr_down_sliced()) {
         m.part2 = slice_partials(st);
         m.nsplit = 1;
@@ -1955,7 +2197,21 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
         }
     }
     if (stamp_buf) gpu_stamp(stamp_buf, stamp_i0 + 1, stream);
-    if (lo_once) {
+    if(cached_norm){
+        auto exp_props=sycl::ext::oneapi::experimental::properties{sycl::ext::oneapi::experimental::use_root_sync};
+        if(g_gr_cached_norm_mode==3){
+            GrUpCompactReady u{};u.w_up=m.a[0].w_up;u.xn=m.xn;u.T=m.T;
+            for(int k=0;k<m.T;++k){u.lo[k]=m.a[k].lo;u.mixed[k]=m.a[k].mixed;}
+            st->parallel_for<dpct_kernel_name<class gr_up_compact_ready>>(
+                sycl::nd_range<3>(sycl::range(1,1,UPM_BLOCKS)*sycl::range(1,1,THREADS),sycl::range(1,1,THREADS)),exp_props,
+                [=](sycl::nd_item<3>)[[sycl::reqd_sub_group_size(32)]]{gr_up_compact_ready_kernel(u);});
+        }else if(lo_once)st->parallel_for<dpct_kernel_name<class gr_up_cached_norm_lo>>(
+            sycl::nd_range<3>(sycl::range(1,1,UPM_BLOCKS)*sycl::range(1,1,THREADS),sycl::range(1,1,THREADS)),exp_props,
+            [=](sycl::nd_item<3>)[[sycl::reqd_sub_group_size(32)]]{gr_up_cached_norm_kernel<true>(m);});
+        else st->parallel_for<dpct_kernel_name<class gr_up_cached_norm>>(
+            sycl::nd_range<3>(sycl::range(1,1,UPM_BLOCKS)*sycl::range(1,1,THREADS),sycl::range(1,1,THREADS)),exp_props,
+            [=](sycl::nd_item<3>)[[sycl::reqd_sub_group_size(32)]]{gr_up_cached_norm_kernel<false>(m);});
+    }else if (lo_once) {
         launch_gr_up_prepared_lo(m, st);
     } else {
         auto exp_props = sycl::ext::oneapi::experimental::properties{

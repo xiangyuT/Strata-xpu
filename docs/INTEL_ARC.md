@@ -155,6 +155,9 @@ activation quantization and KV format, and use the original route outside their 
 - `STRATA_SYCL_GDN_STATE_COMMIT=1`: replay the accepted recurrent-state prefix without computing the discarded output rows.
 - `STRATA_SYCL_GR_NORM_BOUNDS=1`: limit GR normalization to the stream owned by each work-group, retaining its reduction order.
 - `STRATA_SYCL_ADAPT_WINDOW_PRESENCE=1`: in the mirror cache controller, count each routed expert once per completed verify window.
+- `STRATA_SYCL_IQ4_T4_ESIMD=1`: use the ESIMD INT8 matrix path for four-column IQ4_XS calls with input width 2560 or 6144 and 64-byte-aligned weights and activations. This takes precedence over `STRATA_SYCL_IQ4_T4_XMX` on that domain.
+- `STRATA_SYCL_QSA_CHUNK_DOWN=1`: use consuming-lane reductions for INT8 KV decode attention, keeping the original lane-zero reduction order and merge.
+- `STRATA_SYCL_GR_CACHED_NORM=3`: reuse the normalized GR product and pass a compact prepared-up payload. This requires `STRATA_SYCL_GR_NORM_BOUNDS=1` and the split-normalization/sliced-down routes. Misaligned or overlapping pending outputs use the original path.
 
 The matrix paths use the experimental oneAPI joint-matrix API. Their element ownership
 was checked on BMG-G21 with oneAPI 2026.1.1; other compiler/device combinations need their own checks.
