@@ -145,6 +145,26 @@ byte budgets fixed. Exchanges complete and the residency/mirror tables update be
 This mode requires every noncached expert to be mirrored; peer/remote caches, elastic cache resizing
 and profile saving are incompatible with it.
 
+### Optional SYCL decode paths
+
+These paths are opt-in; each flag defaults off. They keep the stored model weights,
+activation quantization and KV format, and use the original route outside their supported shapes.
+
+- `STRATA_SYCL_IQ3_XMX=1`: INT8 joint-matrix dot products for the supported small IQ3_S matrix shapes.
+- `STRATA_SYCL_IQ4_T4_XMX=1`: INT8 joint-matrix dot products for four-column IQ4_XS calls at the supported shapes.
+- `STRATA_SYCL_GDN_STATE_COMMIT=1`: replay the accepted recurrent-state prefix without computing the discarded output rows.
+- `STRATA_SYCL_GR_NORM_BOUNDS=1`: limit GR normalization to the stream owned by each work-group, retaining its reduction order.
+- `STRATA_SYCL_ADAPT_WINDOW_PRESENCE=1`: in the mirror cache controller, count each routed expert once per completed verify window.
+
+The matrix paths use the experimental oneAPI joint-matrix API. Their element ownership
+was checked on BMG-G21 with oneAPI 2026.1.1; other compiler/device combinations need their own checks.
+The state-only and normalization paths also require the engine's supported recurrent/GR geometry.
+
+For window-presence heat, the existing `--adapt-every` and `--adapt-decay` options still
+control cadence and decay. Capacity, same-layer replacements and complete-mirror requirements
+remain as described above. `--adapt-every 8 --adapt-decay 1` selects a cadence of eight completed
+decode windows and accumulated heat without decay; choose the policy for your session.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,

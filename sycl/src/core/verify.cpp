@@ -1329,9 +1329,16 @@ bool Verifier::capture_commit(std::string &err) try {
                 float* conv = state + (uint64_t) g.ssm_state_size * g.ssm_v_heads * g.ssm_state_size;
                 const float* qkv = qkv_L_ + (size_t) gdn_index * MT * C;
                 gdn_conv_commit(conv, qkv, (int) C, commit_, cs_);
+                static const bool state_only = [] { const char* e=std::getenv("STRATA_SYCL_GDN_STATE_COMMIT"); return e && e[0]=='1'; }();
+                if(state_only)
+                    gdn_commit_state_multi(state,h_L_+(size_t)gdn_index*MT*C,(int)C,
+                        gate_L_+(size_t)gdn_index*MT*HV,beta_L_+(size_t)gdn_index*MT*HV,
+                        (int)g.ssm_k_heads,(int)HV,(int)MT,commit_,cs_);
+                else {
                 gdn_step_norm_multi(state, h_L_ + (size_t) gdn_index * MT * C, (int) C, gate_L_ + (size_t) gdn_index * MT * HV,
                                     beta_L_ + (size_t) gdn_index * MT * HV, z_, (const float*) wnm->data, EPS, y_dummy_,
                                     (int) g.ssm_k_heads, (int) HV, (int) MT, commit_, cs_);
+                }
                 ++gdn_index;
             } else {
                 const QsaState& st = ss.qsa_states[qsa_index];
@@ -1584,8 +1591,11 @@ bool Verifier::run(int T, const int32_t *tokens, int64_t pos0, PoolMultiFn pool,
         if (total != (uint64_t)(le_ - lb_) * (uint64_t)T * (uint64_t)ss.k)
             throw std::runtime_error("mirror adaptive route histogram coverage mismatch");
         // Match the CPU usage counter's scalar increment order.
-        for (size_t i = 0; i < expert_usage_counts_h_.size(); ++i)
-            for (uint32_t n = 0; n < expert_usage_counts_h_[i]; ++n) (*expert_usage_counter_)[i] += 1.f;
+        static const bool presence = [] { const char* e=std::getenv("STRATA_SYCL_ADAPT_WINDOW_PRESENCE"); return e && e[0]=='1'; }();
+        for (size_t i = 0; i < expert_usage_counts_h_.size(); ++i) {
+            const uint32_t count=presence ? (expert_usage_counts_h_[i]>0 ? 1u : 0u) : expert_usage_counts_h_[i];
+            for (uint32_t n=0;n<count;++n) (*expert_usage_counter_)[i] += 1.f;
+        }
     }
 #ifdef STRATA_SYCL_WORKLOAD_TRACE
     if (auto found = routing_audits.find(this); found != routing_audits.end()) {

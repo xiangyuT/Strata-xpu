@@ -336,6 +336,48 @@ runtimes. You may need to adjust the code.
     }
 }
 
+// Commit has no output consumer. Keep the state update order.
+__dpct_inline__ void gdn_commit_state_multi_kernel(
+    float* __restrict__ state, const float* __restrict__ hbuf, int C,
+    const float* __restrict__ gate, const float* __restrict__ beta,
+    int h_k, int h_v, const int32_t* __restrict__ n_keep) {
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+    auto& sk = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[S]>(
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    auto& red = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[RG][S]>(
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    const int head = item_ct1.get_group(2), col = item_ct1.get_local_id(2);
+    const int rg = item_ct1.get_local_id(1), tid = rg * S + col;
+    const int qh = head % h_k, qk = S * h_k;
+    const int n = *n_keep;
+    float s[RPG];
+    float* base = state + ((size_t)(rg * RPG) * h_v + head) * S + col;
+    const size_t row_stride = (size_t)h_v * S;
+#pragma unroll
+    for (int r = 0; r < RPG; ++r) s[r] = base[r * row_stride];
+    for (int t = 0; t < n; ++t) {
+        const float* ht = hbuf + (size_t)t * C;
+        item_ct1.barrier();
+        if (tid < S) sk[tid] = ht[qk + qh * S + tid];
+        item_ct1.barrier();
+        const float g = sycl::native::exp(gate[(size_t)t * h_v + head]);
+        float kv = 0.0f;
+#pragma unroll
+        for (int r = 0; r < RPG; ++r) kv = sycl::fma(s[r], sk[rg * RPG + r], kv);
+        red[rg][col] = kv;
+        item_ct1.barrier();
+        const float kv_col = red[0][col] + red[1][col] + red[2][col] + red[3][col];
+        const float delta = (ht[2 * qk + head * S + col] - g * kv_col) * beta[(size_t)t * h_v + head];
+#pragma unroll
+        for (int r = 0; r < RPG; ++r)
+            s[r] = sycl::fma((float)g, s[r], sk[rg * RPG + r] * delta);
+    }
+    if (n > 0) {
+#pragma unroll
+        for (int r = 0; r < RPG; ++r) base[r * row_stride] = s[r];
+    }
+}
+
 __dpct_inline__ void embedding_gather_dev_kernel(
     const uint8_t *__restrict__ codes, const float *__restrict__ scales,
     const float *__restrict__ offsets, const int32_t *__restrict__ tokens,
@@ -874,6 +916,21 @@ void gdn_ab_multi(const float* x, const uint16_t* w_alpha, const uint16_t* w_bet
                     });
     }
     check("gdn_ab_multi");
+}
+
+void gdn_commit_state_multi(float* state, const float* h, int C, const float* gate, const float* beta,
+                            int h_k, int h_v, int n_tok, const int32_t* n_keep, void* stream) {
+    if (!state || !h || !gate || !beta || !n_keep || h_k <= 0 || h_v % h_k ||
+        n_tok < 1 || n_tok > kVerifyMaxT)
+        throw std::invalid_argument("GDN state-only commit arguments");
+    auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    strata::q_of(stream)->parallel_for<dpct_kernel_name<class gdn_commit_state_multi_kernel_name>>(
+        sycl::nd_range<3>(sycl::range(1,1,(unsigned)h_v) * sycl::range(1,RG,S), sycl::range(1,RG,S)),
+        properties, [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] {
+            gdn_commit_state_multi_kernel(state,h,C,gate,beta,h_k,h_v,n_keep);
+        });
+    check("gdn_commit_state_multi");
 }
 
 void gdn_step_norm_multi(float* state, const float* h, int conv_channels, const float* gate, const float* beta,

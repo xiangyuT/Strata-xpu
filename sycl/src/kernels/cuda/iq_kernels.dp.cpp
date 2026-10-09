@@ -6,6 +6,7 @@
 // included unchanged.
 #define DPCT_PROFILING_ENABLED
 #include <sycl/sycl.hpp>
+#include <sycl/ext/oneapi/matrix/matrix-intel.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_math.hpp"
 #include "strata/sycl_queue.hpp"
@@ -704,6 +705,90 @@ __dpct_inline__ float warp_sum(float v) {
             0xffffffffu, sycl::ext::oneapi::this_work_item::get_sub_group(), v,
             o);
     return v;
+}
+
+struct IQ3SLMSplit {   // IQ3_S
+    struct W { int g[8]; int ls; float dw; };
+    static W load(const void* __restrict__ vbq, int kbx, int iqs, const uint32_t* grid) {
+        const block_iq3_s* bq3 = iq_signed_grid::block_at<block_iq3_s>(vbq, uint32_t(kbx));
+        const sycl::int2 qs_packed = sycl::int2(get_int_b2(bq3->qs, iqs + 0),
+                                                get_int_b2(bq3->qs, iqs + 1));
+        const uint8_t* qs = (const uint8_t*) &qs_packed;
+        const int qh = bq3->qh[iqs / 2];
+        const int signs_packed_32 = get_int_b2(bq3->signs, iqs / 2);
+        const uint8_t* signs_packed_8 = (const uint8_t*) &signs_packed_32;
+        W r;
+#pragma unroll
+        for (int l0 = 0; l0 < 8; l0 += 2) {
+            const sycl::int2 grid_pos =
+                sycl::int2(grid[qs[l0 + 0] | ((qh << (8 - l0)) & 0x100)],
+                           grid[qs[l0 + 1] | ((qh << (7 - l0)) & 0x100)]);
+            r.g[l0 + 0] = iq_signed_grid::apply(grid_pos.x(), signs_packed_8[l0 / 2]);
+            r.g[l0 + 1] = iq_signed_grid::apply(grid_pos.y(), signs_packed_8[l0 / 2] >> 4);
+        }
+        r.ls = 1 + 2 * ((bq3->scales[iqs / 4] >> ((iqs << 1) & 0x04)) & 0x0F);
+        r.dw = sycl::vec<sycl::half, 1>(bq3->d)
+                   .convert<float, sycl::rounding_mode::automatic>()[0];
+        return r;
+    }
+};
+namespace iq3jm=sycl::ext::oneapi::experimental::matrix;
+inline float iq3_xmx_float_finish(const IQ3SLMSplit::W& pw,const block_q8_1* activation,int sumi){
+    sumi*=pw.ls;const float d=pw.dw*activation->ds[0];return d*sumi;
+}
+template<int NT,int KB>class IQ3XmxRegisterKernel;
+template<int NT,int KB>
+void iq3_xmx_register_launch(const uint8_t* w,const block_q8_1* x,float* y,int N,sycl::queue* q){
+    constexpr int NR=16,NS=32,XB=KB*8,RB=KB*sizeof(block_iq3_s);
+    q->parallel_for<IQ3XmxRegisterKernel<NT,KB>>(sycl::nd_range<1>((N+NR-1)/NR*512,512),
+      [=](sycl::nd_item<1> it)[[sycl::reqd_sub_group_size(16)]]{
+        auto group=it.get_group();auto sg=it.get_sub_group();int lid=it.get_local_linear_id(),sid=lid/16,lane=lid%16,base=it.get_group_linear_id()*NR,row=base+lane;
+        auto& table=*sycl::ext::oneapi::group_local_memory_for_overwrite<uint32_t[512]>(group);
+        auto& partial=*sycl::ext::oneapi::group_local_memory_for_overwrite<float[NS*NT*NR]>(group);
+        table[lid]=iq3s_grid[lid];it.barrier(sycl::access::fence_space::local_space);
+        float acc[NT]={};
+        for(int seg=sid;seg<XB;seg+=NS){
+            IQ3SLMSplit::W pw{};if(row<N)pw=IQ3SLMSplit::load(w+uint32_t(row)*uint32_t(RB),seg/8,2*(seg%8),table);
+            iq3jm::joint_matrix<sycl::sub_group,int8_t,iq3jm::use::a,NT,32,iq3jm::layout::row_major> A;
+            iq3jm::joint_matrix<sycl::sub_group,int8_t,iq3jm::use::b,32,NR,iq3jm::layout::ext_intel_packed> B;
+            iq3jm::joint_matrix<sycl::sub_group,int32_t,iq3jm::use::accumulator,NT,NR> C;
+
+                auto pa=sycl::address_space_cast<sycl::access::address_space::global_space,sycl::access::decorated::no>(x[seg].qs);
+                iq3jm::joint_matrix_load(sg,A,pa,XB*sizeof(block_q8_1));
+                iq3jm::joint_matrix_fill(sg,B,0);
+
+                    int kr=0;
+                    iq3jm::joint_matrix_apply(sg,B,[&](auto& element){
+                        const int word=kr<4?pw.g[0]:kr<8?pw.g[1]:kr<12?pw.g[2]:kr<16?pw.g[3]:kr<20?pw.g[4]:kr<24?pw.g[5]:kr<28?pw.g[6]:pw.g[7];
+                        element=int8_t(uint32_t(word)>>(8*(kr%4)));++kr;
+                    });
+
+
+            iq3jm::joint_matrix_fill(sg,C,0);iq3jm::joint_matrix_mad(sg,C,A,B,C);
+
+                int mr=0;
+                iq3jm::joint_matrix_apply(sg,C,[&](auto& element){
+                    acc[mr]+=iq3_xmx_float_finish(pw,x+mr*XB+seg,int(element));++mr;
+                });
+
+
+        }
+#pragma unroll
+        for(int j=0;j<NT;++j)partial[sid*NT*NR+j*NR+lane]=acc[j];
+        it.barrier(sycl::access::fence_space::local_space);
+        const int rr=lid/32,vl=lid%32;
+#pragma unroll
+        for(int j=0;j<NT;++j){float v=partial[vl*NT*NR+j*NR+rr];v+=partial[(vl^16)*NT*NR+j*NR+rr];
+#pragma unroll
+            for(int off=8;off;off>>=1)v+=sycl::permute_group_by_xor(sg,v,off);
+            if(vl==0&&base+rr<N)y[uint32_t(j)*uint32_t(N)+uint32_t(base+rr)]=v;
+        }
+    });
+}
+template<int KB>void iq3_xmx_register_T(int T,const uint8_t* w,const block_q8_1* x,float* y,int N,sycl::queue* q){
+#define IQ3_XMX_T(t) case t:iq3_xmx_register_launch<t,KB>(w,x,y,N,q);break
+    switch(T){IQ3_XMX_T(1);IQ3_XMX_T(2);IQ3_XMX_T(3);IQ3_XMX_T(4);IQ3_XMX_T(5);IQ3_XMX_T(6);IQ3_XMX_T(7);IQ3_XMX_T(8);}
+#undef IQ3_XMX_T
 }
 
 // SYCL port: lanes per row for the grouped expert kernels. A 2560-wide row is 80 (block, part) calls; over 32
@@ -2481,6 +2566,14 @@ void iq_mmvq(int t, const void* w, const void* x_q8_1, float* y, int n_in, int n
     dpct::queue_ptr s = strata::q_of(stream);
     const auto* W = (const uint8_t*) w;
     const auto* X = (const block_q8_1*) x_q8_1;
+    static const bool xmx = [] { const char* e=std::getenv("STRATA_SYCL_IQ3_XMX"); return e && e[0]=='1'; }();
+    const bool supported = (n_in==2560 && (n_out==512 || n_out==640 || n_out==6144 || n_out==10240 || n_out==12288)) ||
+                           (n_in==6144 && n_out==2560);
+    if (xmx && t==21 && supported && ncols>=1 && ncols<=8) {
+        if(n_in==2560)iq3_xmx_register_T<10>(ncols,W,X,y,n_out,s);
+        else iq3_xmx_register_T<24>(ncols,W,X,y,n_out,s);
+        check("iq_mmvq");return;
+    }
     switch (t) {
 #define STRATA_MMVQ(T) case T: launch_mmvq<T>(W, rb, X, y, n_in, n_out, ncols, s); break;
         STRATA_MMVQ_FMTS(STRATA_MMVQ)

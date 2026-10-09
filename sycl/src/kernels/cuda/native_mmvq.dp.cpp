@@ -25,6 +25,7 @@
 
 #define DPCT_PROFILING_ENABLED
 #include <sycl/sycl.hpp>
+#include <sycl/ext/oneapi/matrix/matrix-intel.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_math.hpp"
 #include "strata/sycl_queue.hpp"
@@ -1745,6 +1746,66 @@ void launch_wide(const void* weights, const void* x_q8_1, float* y, int n_in, in
         sycl::nd_range<3>(sycl::range(1, 1, blocks) * sycl::range(1, WARPS, WARP), sycl::range(1, WARPS, WARP)),
         [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { native_mmvq_wide_kernel<F, NCOLS>(w, x, y, n_in, n_out); });
 }
+namespace iq4jm=sycl::ext::oneapi::experimental::matrix;
+inline float iq4_xmx_float_finish(const WideIQ4XS::W& pw,const Q81Block* activation,int sumi){
+    return pw.d*(float)activation->ds[0]*(float)sumi;
+}
+template<int NT,int KB>class IQ4XmxVirtualKernel;
+template<int NT,int KB>
+void iq4_xmx_virtual_launch(const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    using F=WideIQ4LookupProbe<false>;constexpr int NR=16,NS=16,XB=KB*8,RB=KB*sizeof(F::Block);
+    q->parallel_for<IQ4XmxVirtualKernel<NT,KB>>(sycl::nd_range<1>((N+NR-1)/NR*256,256),
+      [=](sycl::nd_item<1> it)[[sycl::reqd_sub_group_size(16)]]{
+        auto group=it.get_group();auto sg=it.get_sub_group();int lid=it.get_local_linear_id(),sid=lid/16,lane=lid%16,base=it.get_group_linear_id()*NR,row=base+lane;
+        auto& partial=*sycl::ext::oneapi::group_local_memory_for_overwrite<float[32*NT*NR]>(group);
+        for(int virtual_id=sid;virtual_id<32;virtual_id+=NS){
+        float acc[NT]={};
+        for(int seg=virtual_id;seg<XB;seg+=32){
+            F::W pw{};if(row<N)pw=F::load(reinterpret_cast<const F::Block*>(w+uint32_t(row)*uint32_t(RB))+seg/8,seg%8);
+            iq4jm::joint_matrix<sycl::sub_group,int8_t,iq4jm::use::a,NT,32,iq4jm::layout::row_major> A;
+            iq4jm::joint_matrix<sycl::sub_group,int8_t,iq4jm::use::b,32,NR,iq4jm::layout::ext_intel_packed> B;
+            iq4jm::joint_matrix<sycl::sub_group,int32_t,iq4jm::use::accumulator,NT,NR> C;
+
+                auto pa=sycl::address_space_cast<sycl::access::address_space::global_space,sycl::access::decorated::no>(x[seg].qs);
+                iq4jm::joint_matrix_load(sg,A,pa,XB*sizeof(Q81Block));
+                iq4jm::joint_matrix_fill(sg,B,0);
+
+                    int kr=0;
+                    iq4jm::joint_matrix_apply(sg,B,[&](auto& element){
+                        const int word=kr<4?pw.lo[0]:kr<8?pw.lo[1]:kr<12?pw.lo[2]:kr<16?pw.lo[3]:kr<20?pw.hi[0]:kr<24?pw.hi[1]:kr<28?pw.hi[2]:pw.hi[3];
+                        element=int8_t(uint32_t(word)>>(8*(kr%4)));++kr;
+                    });
+
+
+            iq4jm::joint_matrix_fill(sg,C,0);iq4jm::joint_matrix_mad(sg,C,A,B,C);
+
+                int mr=0;
+                iq4jm::joint_matrix_apply(sg,C,[&](auto& element){
+                    acc[mr]+=iq4_xmx_float_finish(pw,x+mr*XB+seg,int(element));++mr;
+                });
+
+
+        }
+#pragma unroll
+        for(int j=0;j<NT;++j)partial[virtual_id*NT*NR+j*NR+lane]=acc[j];
+        }
+        it.barrier(sycl::access::fence_space::local_space);
+        const int vl=lid%32;
+        for(int rr=lid/32;rr<NR;rr+=8){
+#pragma unroll
+        for(int j=0;j<NT;++j){float v=partial[vl*NT*NR+j*NR+rr];v+=partial[(vl^16)*NT*NR+j*NR+rr];
+#pragma unroll
+            for(int off=8;off;off>>=1)v+=sycl::permute_group_by_xor(sg,v,off);
+            if(vl==0&&base+rr<N)y[uint32_t(j)*uint32_t(N)+uint32_t(base+rr)]=v;
+        }
+        }
+    });
+}
+template<int KB>void iq4_xmx_virtual_T(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+#define IQ4_XMX_T(t) case t:iq4_xmx_virtual_launch<t,KB>(w,x,y,N,q);break
+    switch(T){IQ4_XMX_T(1);IQ4_XMX_T(2);IQ4_XMX_T(3);IQ4_XMX_T(4);IQ4_XMX_T(5);IQ4_XMX_T(6);IQ4_XMX_T(7);IQ4_XMX_T(8);}
+#undef IQ4_XMX_T
+}
 inline bool wide_k() {   // STRATA_MMVQ_WIDE_K=0: Q4_K/Q5_K/IQ4_XS through the multi kernel (the old path)
     static const bool v = std::getenv("STRATA_MMVQ_WIDE_K") == nullptr || std::atoi(std::getenv("STRATA_MMVQ_WIDE_K")) != 0;
     return v;
@@ -2407,6 +2468,14 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
     validate_pointer(x_q8_1);
     validate_pointer(y);
     validate_stream(stream);
+    static const bool selective = [] { const char* e=std::getenv("STRATA_SYCL_IQ4_T4_XMX");return e && e[0]=='1'; }();
+    const bool supported=(n_in==2560 && (n_out==6144 || n_out==10240 || n_out==12288 || n_out==248320)) || (n_in==6144 && n_out==2560);
+    if(selective && ncols==4 && supported){
+        auto* bytes=static_cast<const uint8_t*>(weights);auto* activation=static_cast<const Q81Block*>(x_q8_1);auto* q=strata::q_of(stream);
+        if(n_in==2560)iq4_xmx_virtual_T<10>(ncols,bytes,activation,y,n_out,q);
+        else iq4_xmx_virtual_T<24>(ncols,bytes,activation,y,n_out,q);
+        launch_check();return;
+    }
     static const bool use_bit_select = [] {
         const char* v = std::getenv("STRATA_SYCL_IQ4_LOOKUP");
         return v && std::atoi(v) != 0;
