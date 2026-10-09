@@ -131,6 +131,20 @@ Things that matter on an Arc (details in INTEL.md):
   that path is the one that has hung, and #667 found the likely reason: the GPU does not see the CPU's flag
   stores without a system fence.
 
+**Fork update, 2026-10-09:** the preceding NoHost restriction describes the older port.
+With device planning and a complete pinned host mirror, this fork's NoHost path also computes mirrored experts
+on the GPU. The opt-in cache controller below uses that path.
+
+### Adapting the GPU cache with a host mirror
+
+Set `STRATA_SYCL_MIRROR_ADAPT=1` for a single-GPU `--serve` session with `--stream-experts`,
+`--no-prefill-borrow`, device planning and NoHost enabled. `--adapt-every N`, `--adapt-swaps N`
+(at most 96) and `--adapt-decay` control how completed routing counts replace cold cached experts.
+Each same-layer replacement exchanges the existing device slot and pinned mirror bytes, keeping both
+byte budgets fixed. Exchanges complete and the residency/mirror tables update before the next window.
+This mode requires every noncached expert to be mirrored; peer/remote caches, elastic cache resizing
+and profile saving are incompatible with it.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,
