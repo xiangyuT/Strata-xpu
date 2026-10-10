@@ -168,6 +168,15 @@ control cadence and decay. Capacity, same-layer replacements and complete-mirror
 remain as described above. `--adapt-every 8 --adapt-decay 1` selects a cadence of eight completed
 decode windows and accumulated heat without decay; choose the policy for your session.
 
+### Optional SYCL prompt dequantization
+
+`STRATA_SYCL_DEQUANT_GU_BOUNDED=1` selects an eight-subgroup gate/up FP16
+dequantizer for IQ2_XXS, IQ2_S and IQ1_M. It uses bounded byte offsets and maps
+adjacent lanes to adjacent output runs, retaining the original dequantization
+formulas and interleaved gate/up layout. The flag defaults off. Unsupported
+formats and outputs larger than `UINT32_MAX` bytes keep the original route;
+USM base pointers retain their full width. This path requires 32-lane subgroups.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,

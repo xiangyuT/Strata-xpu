@@ -2682,6 +2682,62 @@ void iq_dequant_f32(int t, const void* src, int64_t n, float* dst, void* stream)
 }
 
 namespace {
+template <int Type, uint32_t PerRow = 0>
+void launch_dequant_gu_bounded(const void* gate, const void* up, uint32_t n_ff,
+                               uint32_t n_embd, uint16_t* dst, void* stream) {
+    using Block = std::conditional_t<Type == 16, block_iq2_xxs,
+                  std::conditional_t<Type == 22, block_iq2_s, block_iq1_m>>;
+    constexpr uint32_t subgroups = 8;
+    const uint32_t per_row = PerRow ? PerRow : n_embd / QK_K;
+    const uint32_t blocks = n_ff * per_row;
+    const size_t groups = (blocks + subgroups - 1) / subgroups;
+    const auto properties = sycl::ext::oneapi::experimental::properties{
+        sycl::ext::oneapi::experimental::use_root_sync};
+    strata::q_of(stream)->parallel_for<dpct_kernel_name<class dequant_gu_bounded,
+                                                       dpct_kernel_scalar<Type>,
+                                                       dpct_kernel_scalar<PerRow>>>(
+        sycl::nd_range<3>(sycl::range<3>(1, 2, groups * subgroups * 32),
+                          sycl::range<3>(1, 1, subgroups * 32)), properties,
+        [=](sycl::nd_item<3> item) [[sycl::reqd_sub_group_size(32)]] {
+            const auto sg = item.get_sub_group();
+            const uint32_t block = uint32_t(item.get_group(2)) * subgroups + sg.get_group_linear_id();
+            if (block >= blocks) return;
+            const uint32_t parity = item.get_group(1);
+            const uint32_t row = block / per_row, col = block % per_row;
+            const uint32_t bytes = ((2u * row + parity) * per_row + col) * QK_K * 2u;
+            const Block* selected = iq_signed_grid::block_at<Block>(parity ? up : gate, block);
+            // These formats independently emit eight consecutive values per
+            // logical dequant thread. Transpose the original 8-by-4 lane map
+            // so adjacent hardware lanes store adjacent 16-byte runs.
+            const uint32_t lane = sg.get_local_linear_id();
+            const uint32_t dequant_thread = (lane & 3u) * 8u + (lane >> 2);
+            dq_dispatch<sycl::half>(Type, selected, 0,
+                reinterpret_cast<sycl::half*>(reinterpret_cast<uint8_t*>(dst) + bytes),
+                dequant_thread);
+        });
+}
+}
+
+bool iq_dequant_gu_f16_bounded(int type, const void* gate, const void* up,
+                              int64_t n_ff, int64_t n_embd, uint16_t* dst, void* stream) {
+    if (n_ff <= 0 || n_embd <= 0 || n_embd % QK_K != 0 ||
+        uint64_t(n_embd) > UINT32_MAX / 4u ||
+        uint64_t(n_ff) > UINT32_MAX / (uint64_t(n_embd) * 4u)) return false;
+#define STRATA_DEQUANT_BOUNDED(TYPE) \
+    case TYPE: \
+        if (n_embd == 2560) launch_dequant_gu_bounded<TYPE, 10>(gate, up, n_ff, n_embd, dst, stream); \
+        else launch_dequant_gu_bounded<TYPE>(gate, up, n_ff, n_embd, dst, stream); \
+        return true;
+    switch (type) {
+        STRATA_DEQUANT_BOUNDED(16)
+        STRATA_DEQUANT_BOUNDED(22)
+        STRATA_DEQUANT_BOUNDED(29)
+        default: return false;
+    }
+#undef STRATA_DEQUANT_BOUNDED
+}
+
+namespace {
 template <int Subgroups, int Type = 0, int PerRow = 0>
 void launch_dequant_gu_tiled(int type, const void* gate, const void* up,
                              int64_t n_ff, int64_t n_embd, uint16_t* dst,
@@ -2761,6 +2817,8 @@ void iq_dequant_gu_f16_tiled(int type, const void* gate, const void* up,
 void iq_dequant_gu_f16(int t, const void* gate, const void* up, int64_t n_ff, int64_t n_embd, uint16_t* dst, void* stream) {
     // checked like the other entry points: an unknown type used to leave `dst` unwritten, a wrong prompt and no error
     if (n_embd % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_gu_f16: type %d / %lld\n", t, (long long) n_embd); std::exit(1); }
+    static const bool bounded = env_on("STRATA_SYCL_DEQUANT_GU_BOUNDED");
+    if (bounded && iq_dequant_gu_f16_bounded(t, gate, up, n_ff, n_embd, dst, stream)) return;
     if (dequant_gu_subgroups() != 1) {
         static const bool static_type = env_on("STRATA_SYCL_DEQUANT_GU_STATIC_TYPE");
         static const bool static_row = env_on("STRATA_SYCL_DEQUANT_GU_STATIC_ROW");
