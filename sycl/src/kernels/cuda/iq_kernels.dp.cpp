@@ -2610,6 +2610,33 @@ void iq_dequant_f16(int t, const void* src, int64_t n, uint16_t* dst, void* stre
     check("iq_dequant_f16");
 }
 
+void iq_dequant_f16_plain_launch(int t, const void* src, int64_t n, uint16_t* dst, void* stream) {
+    if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_f16: bad arguments\n"); std::exit(1); }
+    {
+
+        auto exp_props = sycl::ext::oneapi::experimental::properties{
+            };
+        dpct::has_capability_or_fail(
+            strata::q_of(stream)->get_device(),
+            {sycl::aspect::fp16});
+
+        strata::q_of(stream)
+            ->submit([&](sycl::handler &cgh) {
+
+                cgh.parallel_for<dpct_kernel_name<
+                    class b70_no_root_dequant_flat_kernel, sycl::half>>(
+                    sycl::nd_range<3>(sycl::range(1, 1, (unsigned)(n / 256)) *
+                                          sycl::range(1, 1, 32),
+                                      sycl::range(1, 1, 32)),
+                    exp_props, [=](sycl::nd_item<3> item_ct1) {
+                        dequant_flat_kernel<sycl::half>(
+                            t, src, (sycl::half *)dst);
+                    });
+            });
+    }
+    check("iq_dequant_f16");
+}
+
 namespace {
 __dpct_inline__ void embed_rows_kernel(
     int ty, const uint8_t *__restrict__ table, size_t row_bytes,

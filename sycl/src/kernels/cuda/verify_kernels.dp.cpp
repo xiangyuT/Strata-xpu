@@ -1,3 +1,4 @@
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 // src/kernels/cuda/verify_kernels.cu - see include/strata/kernels/verify_kernels.hpp.
 //
 // The per-token arithmetic of every kernel here is transcribed from its single-token original (fused_gdn.cu,
@@ -373,6 +374,136 @@ __dpct_inline__ void gdn_commit_state_multi_kernel(
             s[r] = sycl::fma((float)g, s[r], sk[rg * RPG + r] * delta);
     }
     if (n > 0) {
+#pragma unroll
+        for (int r = 0; r < RPG; ++r) base[r * row_stride] = s[r];
+    }
+}
+
+__dpct_inline__ void gdn_step_norm_qkreg_kernel(
+    float *__restrict__ state, const float *__restrict__ hbuf, int C,
+    const float *__restrict__ gate, const float *__restrict__ beta,
+    const float *__restrict__ z, const float *__restrict__ gamma, float eps,
+    float *__restrict__ y, int h_k, int h_v, int T,
+    const int32_t *__restrict__ n_keep, int t_out_begin) {
+    auto item_ct1 = sycl::ext::oneapi::this_work_item::get_nd_item<3>();
+    auto &red =
+        *sycl::ext::oneapi::group_local_memory_for_overwrite<float[RG][S]>(
+            sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    auto &wsum = *sycl::ext::oneapi::group_local_memory_for_overwrite<
+        float[S * RG / 32]>(
+        sycl::ext::oneapi::this_work_item::get_work_group<3>());
+    const int head = item_ct1.get_group(2);
+    const int col = item_ct1.get_local_id(2);
+    const int rg = item_ct1.get_local_id(1);
+    const int tid = rg * S + col;
+    auto sg=item_ct1.get_sub_group();
+    const int lane=sg.get_local_linear_id();
+    const int qh = head % h_k;
+    const int qk = S * h_k;             // q at [0, qk), k at [qk, 2qk), v at [2qk, ...)
+    const int value_dim = S * h_v;
+    const int n = n_keep ? *n_keep : T;
+    float s[RPG];
+    float* base = state + ((size_t) (rg * RPG) * h_v + head) * S + col;
+    const size_t row_stride = (size_t) h_v * S;
+#pragma unroll
+    for (int r = 0; r < RPG; ++r) s[r] = base[r * row_stride];
+    for (int t = 0; t < n; ++t) {
+        const float* ht = hbuf + (size_t) t * C;
+        /*
+        DPCT1118: SYCL group functions and algorithms must be encountered in
+        converged control flow. You may need to adjust the code.
+        */
+        /*
+        DPCT1065: Consider replacing sycl::nd_item::barrier() with
+        sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
+        better performance if there is no access to global memory.
+        */
+        item_ct1.barrier(); // the previous token is done with sk/sq/red/wsum
+        const float k_own=ht[qk+qh*S+rg*RPG+lane];
+        const float q_own=ht[qh*S+rg*RPG+lane];
+        const float g = sycl::native::exp(gate[(size_t)t * h_v + head]);
+        float kv = 0.0f;
+#pragma unroll
+        for (int r = 0; r < RPG; ++r)
+            kv = sycl::fma(s[r], sycl::select_from_group(sg,k_own,r), kv);
+        red[rg][col] = kv;
+        /*
+        DPCT1118: SYCL group functions and algorithms must be encountered in
+        converged control flow. You may need to adjust the code.
+        */
+        /*
+        DPCT1065: Consider replacing sycl::nd_item::barrier() with
+        sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
+        better performance if there is no access to global memory.
+        */
+        item_ct1.barrier();
+        const float kv_col = red[0][col] + red[1][col] + red[2][col] + red[3][col];
+        const float delta = (ht[2 * qk + head * S + col] - g * kv_col) * beta[(size_t) t * h_v + head];
+        float o = 0.0f;
+#pragma unroll
+        for (int r = 0; r < RPG; ++r) {
+            s[r] = sycl::fma((float)g, s[r], sycl::select_from_group(sg,k_own,r) * delta);
+            o = sycl::fma(s[r], sycl::select_from_group(sg,q_own,r), o);
+        }
+        /*
+        DPCT1118: SYCL group functions and algorithms must be encountered in
+        converged control flow. You may need to adjust the code.
+        */
+        /*
+        DPCT1065: Consider replacing sycl::nd_item::barrier() with
+        sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
+        better performance if there is no access to global memory.
+        */
+        item_ct1.barrier();
+        red[rg][col] = o;
+        /*
+        DPCT1118: SYCL group functions and algorithms must be encountered in
+        converged control flow. You may need to adjust the code.
+        */
+        /*
+        DPCT1065: Consider replacing sycl::nd_item::barrier() with
+        sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
+        better performance if there is no access to global memory.
+        */
+        item_ct1.barrier();
+        float oc = 0.0f, sq_part = 0.0f;
+        if (rg == 0) {
+            oc = (red[0][col] + red[1][col] + red[2][col] + red[3][col]) *
+                 sycl::rsqrt((float)S);
+            sq_part = oc * oc;
+        }
+        if (t < t_out_begin) continue;   // a replayed token: its state update is needed, its output is not
+        /*
+DPCT1108: '__shfl_xor_sync' was migrated with the experimental feature
+masked sub_group function which may not be supported by all compilers or
+runtimes. You may need to adjust the code.
+*/
+#pragma unroll
+        for (int o2 = 16; o2 > 0; o2 >>= 1) sq_part +=
+            dpct::experimental::permute_sub_group_by_xor(
+                0xffffffffu, sycl::ext::oneapi::this_work_item::get_sub_group(),
+                sq_part, o2);
+        if ((tid & 31) == 0) wsum[tid >> 5] = sq_part;
+        /*
+        DPCT1118: SYCL group functions and algorithms must be encountered in
+        converged control flow. You may need to adjust the code.
+        */
+        /*
+        DPCT1065: Consider replacing sycl::nd_item::barrier() with
+        sycl::nd_item::barrier(sycl::access::fence_space::local_space) for
+        better performance if there is no access to global memory.
+        */
+        item_ct1.barrier();
+        if (rg == 0) {
+            const float ss = wsum[0] + wsum[1] + wsum[2] + wsum[3];
+            const float scale = sycl::rsqrt(ss / (float)S + eps);
+            const float zz = z[(size_t) t * value_dim + head * S + col];
+            y[(size_t)t * value_dim + head * S + col] =
+                oc * scale * gamma[col] *
+                (1.0f / (1.0f + sycl::native::exp(-zz)));
+        }
+    }
+    if (n_keep != nullptr && n > 0) {
 #pragma unroll
         for (int r = 0; r < RPG; ++r) base[r * row_stride] = s[r];
     }
@@ -933,6 +1064,9 @@ void gdn_commit_state_multi(float* state, const float* h, int C, const float* ga
     check("gdn_commit_state_multi");
 }
 
+void gdn_step_norm_qkreg(float* state, const float* h, int conv_channels, const float* gate, const float* beta,
+                         const float* z, const float* gamma, float eps, float* y, int h_k, int h_v, int n_tok,
+                         const int32_t* n_keep, void* stream, int t_out_begin, void* xq_out);
 void gdn_step_norm_multi(float* state, const float* h, int conv_channels, const float* gate, const float* beta,
                          const float* z, const float* gamma, float eps, float* y, int h_k, int h_v, int n_tok,
                          const int32_t* n_keep, void* stream, int t_out_begin, void* xq_out) {
@@ -941,6 +1075,12 @@ void gdn_step_norm_multi(float* state, const float* h, int conv_channels, const 
         n_tok > kVerifyMaxT) {
         std::fprintf(stderr, "gdn_step_norm_multi: invalid arguments\n");
         std::exit(1);
+    }
+    static const bool qk_grf = [] { const char* e = std::getenv("STRATA_SYCL_GDN_QK_GRF256"); return e && e[0] == '1'; }();
+    if (qk_grf && n_keep == nullptr && h_k == 16 && h_v == 48 && conv_channels == 10240) {
+        gdn_step_norm_qkreg(state, h, conv_channels, gate, beta, z, gamma, eps, y,
+                           h_k, h_v, n_tok, n_keep, stream, t_out_begin, xq_out);
+        return;
     }
     /*
     DPCT1049: The work-group size passed to the SYCL kernel may exceed the
@@ -1358,6 +1498,42 @@ void gpu_stamp(unsigned long long* buf, int i, void* stream) {
             exp_props, [=](sycl::nd_item<3> item_ct1) {
                 gpu_stamp_kernel(buf, i);
             });
+}
+
+
+void gdn_step_norm_qkreg(float* state, const float* h, int conv_channels, const float* gate, const float* beta,
+                         const float* z, const float* gamma, float eps, float* y, int h_k, int h_v, int n_tok,
+                         const int32_t* n_keep, void* stream, int t_out_begin, void* xq_out) {
+    if (xq_out != nullptr) throw std::invalid_argument("SYCL gdn_step_norm_qkreg: fused q8_1 output is not implemented");
+    if (!state || !h || !gate || !beta || !z || !gamma || !y || h_k <= 0 || h_v % h_k || n_tok < 1 ||
+        n_tok > kVerifyMaxT) {
+        std::fprintf(stderr, "gdn_step_norm_qkreg: invalid arguments\n");
+        std::exit(1);
+    }
+    /*
+    DPCT1049: The work-group size passed to the SYCL kernel may exceed the
+    limit. To get the device limit, query info::device::max_work_group_size.
+    Adjust the work-group size if needed.
+    */
+    {
+        auto exp_props = sycl::ext::oneapi::experimental::properties{
+            sycl::ext::oneapi::experimental::use_root_sync,sycl::ext::intel::experimental::grf_size<256>};
+
+        strata::q_of(stream)
+            ->parallel_for<
+                dpct_kernel_name<class gdn_step_norm_qkreg_kernel_42ae26>>(
+                sycl::nd_range<3>(sycl::range(1, 1, (unsigned)h_v) *
+                                      sycl::range(1, RG, S),
+                                  sycl::range(1, RG, S)),
+                exp_props,
+                [=](sycl::nd_item<3> item_ct1)
+                    [[sycl::reqd_sub_group_size(32)]] {
+                        gdn_step_norm_qkreg_kernel(
+                            state, h, conv_channels, gate, beta, z, gamma, eps,
+                            y, h_k, h_v, n_tok, n_keep, t_out_begin);
+                    });
+    }
+    check("gdn_step_norm_qkreg");
 }
 
 }  // namespace strata::kernels
