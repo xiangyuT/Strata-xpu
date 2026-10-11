@@ -2462,6 +2462,7 @@ void native_q3_k_f32(const void* weights, const float* x, void* scratch_q8_1,
 }
 
 void launch_iq4_pair_reuse(int,const void*,const void*,float*,int,int,int,void*);
+void launch_iq4_q8_split(int,const void*,const void*,float*,int,int,int,void*);
 static void launch_iq4_esimd_t4(int,const void*,const void*,float*,int,int,int,void*);
 void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
                        int n_in, int n_out, int ncols, void* stream) {
@@ -2476,7 +2477,10 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
     if(pair_reuse&&ncols>=1&&ncols<=4&&(n_in==2560||n_in==6144)&&
        !(ncols==1&&n_in==2560&&n_out==640)&&
        !(reinterpret_cast<uintptr_t>(weights)&63)&&!(reinterpret_cast<uintptr_t>(x_q8_1)&63)){
-        launch_iq4_pair_reuse(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
+        static const bool split=[](){const char* e=std::getenv("STRATA_SYCL_IQ4_Q8_SPLIT");return e&&e[0]=='1';}();
+        const bool selected=(n_in==2560&&n_out==10240&&ncols==4)||(n_in==6144&&n_out==2560&&ncols==4)||(n_in==2560&&n_out==106299&&ncols==1);
+        if(split&&selected)launch_iq4_q8_split(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
+        else launch_iq4_pair_reuse(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
         return;
     }
     static const bool esimd_t4=[](){const char* e=std::getenv("STRATA_SYCL_IQ4_T4_ESIMD");return e&&e[0]=='1';}();
@@ -3060,4 +3064,114 @@ void launch_iq4_pair_reuse(int mode,const void* w,const void* x,float* y,int K,i
     else iq4_pair_all_t_dispatch<24>(T,static_cast<const uint8_t*>(w),static_cast<const Q81Block*>(x),y,N,strata::q_of(stream));
     launch_check();
 }
+namespace {
+template<int NT,int KB>class PrivateIQ4Q8Split;
+template<int NT,int KB>
+void iq4_q8_split_launch(const uint8_t* weights,const Q81Block* acts,float* y,int N,sycl::queue* q){
+    constexpr int NR=16,XB=KB*8,RB=KB*136;
+    q->parallel_for<PrivateIQ4Q8Split<NT,KB>>(sycl::nd_range<1>(size_t((N+15)/16)*16,16),
+        [=](sycl::nd_item<1> it)[[intel::sycl_explicit_simd]]{
+            i4e::slm_init<32*NT*16*4>();
+            const int sid=it.get_local_linear_id(),base=it.get_group_linear_id()*16;
+            i4e::simd<uint32_t,16> row(base,1);auto valid=row<uint32_t(N);
+            i4e::simd<float,16> acc[2][NT];
+#pragma unroll
+            for(int p=0;p<2;++p){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)acc[p][mr]=0.f;
+            }
+            for(int block=sid/4;block<KB;block+=4){
+                auto header=i4e::load_2d<uint32_t,2,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                    RB-1,N-1,RB-1,block*34,base);
+                i4e::simd<uint32_t,16> dh=header.template select<16,1>(0),sl=header.template select<16,1>(16);
+                i4e::simd<uint16_t,16> bits=dh&0xffffu;
+                i4e::simd<float,16> d=bits.template bit_cast_view<sycl::half>().read();
+                {const int quarter=sid%4;
+                    const int first_segment=block*8+quarter*2;
+                    auto aq=i4e::load_2d<uint32_t,16,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                        XB*36-1,NT-1,XB*36-1,first_segment*9,0);
+                    auto tail=i4e::load_2d<uint32_t,2,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                        XB*36-1,NT-1,XB*36-1,first_segment*9+16,0);
+                    constexpr int AP=decltype(aq)::length/NT,TP=decltype(tail)::length/NT;
+                    static_assert(AP==16 && TP==2);
+                    auto packed8=i4e::load_2d<uint32_t,8,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                        RB-1,N-1,RB-1,block*34+2+quarter*8,base);
+#pragma unroll
+                    for(int half=0;half<2;++half){
+                        const int part=quarter*2+half,seg=block*8+part;
+                        i4e::simd<uint32_t,64> packed=packed8.template select<64,1>(half*64);
+                        i4e::simd<uint32_t,16> ls=((sl>>(4*part))&15u)|(((dh>>(16+2*part))&3u)<<4);
+                        i4e::simd<int32_t,16> scale=ls;scale-=32;
+                        i4e::simd<float,16> fscale=scale;const i4e::simd<float,16> dw=d*fscale;
+                        const auto lo=iq4_e_lookup<64>(packed&0x0f0f0f0fu);
+                        const auto hi=iq4_e_lookup<64>((packed>>4)&0x0f0f0f0fu);
+                        i4e::simd<uint32_t,128> words;
+                        words.template select<64,1>(0)=lo;words.template select<64,1>(64)=hi;
+                        i4e::simd<int8_t,512> B=words.template bit_cast_view<int8_t>();
+                        i4e::simd<uint32_t,NT*8> a_words;
+#pragma unroll
+                        for(int mr=0;mr<NT;++mr){
+                            if(half==0)a_words.template select<8,1>(mr*8)=aq.template select<8,1>(mr*AP+1);
+                            else{
+                                a_words.template select<6,1>(mr*8)=aq.template select<6,1>(mr*AP+10);
+                                a_words.template select<2,1>(mr*8+6)=tail.template select<2,1>(mr*TP);
+                            }
+                        }
+                        i4e::simd<int8_t,NT*32> A=a_words.template bit_cast_view<int8_t>();
+                        i4e::simd<int32_t,NT*16> zero=0;
+                        auto C=i4e::xmx::dpas<8,NT,int32_t>(zero,B,A);
+#pragma unroll
+                        for(int mr=0;mr<NT;++mr){
+                            i4e::simd<uint32_t,1> dhdr=half==0?aq.template select<1,1>(mr*AP).read():aq.template select<1,1>(mr*AP+9).read();
+                            i4e::simd<uint16_t,1> dbits=dhdr&0xffffu;
+                            i4e::simd<float,1> dvalue=dbits.template bit_cast_view<sycl::half>().read();
+                            const float ds=dvalue[0];
+                            i4e::simd<int32_t,16> ci=C.template select<16,1>(mr*16);
+                            i4e::simd<float,16> dot=ci;const i4e::simd<float,16> factor=dw*ds;
+                            i4e::simd<float,16> term=factor*dot;
+                            term.merge(0.f,!valid);
+                            const i4e::simd<float,16> next=acc[half][mr]+term;acc[half][mr].merge(next,valid);
+                        }
+                    }
+                }
+            }
+#pragma unroll
+            for(int part=0;part<2;++part){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)i4e::slm_block_store<float,16>((sid*2+part)*NT*64+mr*64,acc[part][mr]);
+            }
+            i4e::barrier();
+            if(sid<NT){
+            i4e::simd<float,16> p[16];
+#pragma unroll
+            for(int v=0;v<16;++v)p[v]=i4e::slm_block_load<float,16>(v*NT*64+sid*64)+
+                i4e::slm_block_load<float,16>((v+16)*NT*64+sid*64);
+#pragma unroll
+            for(int off=8;off;off/=2){
+#pragma unroll
+                for(int v=0;v<off;++v)p[v]+=p[v+off];
+            }
+            i4e::simd<uint32_t,16> offsets=(row+uint32_t(sid)*uint32_t(N))*4u;
+            i4e::scatter<float,16>(y,offsets,p[0],valid);
+            }
+        });
+}
+template<int KB>
+void iq4_q8_split_dispatch(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    switch(T){
+    case 1:iq4_q8_split_launch<1,KB>(w,x,y,N,q);break;
+    case 2:iq4_q8_split_launch<2,KB>(w,x,y,N,q);break;
+    case 3:iq4_q8_split_launch<3,KB>(w,x,y,N,q);break;
+    case 4:iq4_q8_split_launch<4,KB>(w,x,y,N,q);break;
+    }
+}
+}
+
+void launch_iq4_q8_split(int mode,const void* w,const void* x,float* y,int K,int N,int T,void* stream){
+    if(mode!=1||!w||!x||!y||!stream||N<1||T<1||T>4||(K!=2560&&K!=6144))throw std::invalid_argument("IQ4 split normal route");
+    if(K==2560)iq4_q8_split_dispatch<10>(T,(const uint8_t*)w,(const Q81Block*)x,y,N,strata::q_of(stream));
+    else iq4_q8_split_dispatch<24>(T,(const uint8_t*)w,(const Q81Block*)x,y,N,strata::q_of(stream));
+    launch_check();
+}
+
 } // namespace strata::kernels
