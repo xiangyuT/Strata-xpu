@@ -4695,11 +4695,10 @@ void launch_dequant_gu_bounded(const void* gate, const void* up, uint32_t n_ff,
             const uint32_t row = block / per_row, col = block % per_row;
             const uint32_t bytes = ((2u * row + parity) * per_row + col) * QK_K * 2u;
             const Block* selected = iq_signed_grid::block_at<Block>(parity ? up : gate, block);
-            // These formats independently emit eight consecutive values per
-            // logical dequant thread. Transpose the original 8-by-4 lane map
-            // so adjacent hardware lanes store adjacent 16-byte runs.
+            // The IQ2_S decoder already maps adjacent lanes to adjacent runs.
+            // Keep the earlier caller permutation for the other formats.
             const uint32_t lane = sg.get_local_linear_id();
-            const uint32_t dequant_thread = (lane & 3u) * 8u + (lane >> 2);
+            const uint32_t dequant_thread = Type == 22 ? lane : (lane & 3u) * 8u + (lane >> 2);
             dq_dispatch<sycl::half>(Type, selected, 0,
                 reinterpret_cast<sycl::half*>(reinterpret_cast<uint8_t*>(dst) + bytes),
                 dequant_thread);
