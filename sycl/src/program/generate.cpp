@@ -1,4 +1,5 @@
 #define DPCT_COMPAT_RT_VERSION 12080
+#include "strata/workload_trace.hpp"
 // src/program/generate.cpp - P2.S6: `strata generate`.
 //
 // THE DRIVER, and the first program in this project that answers a question.
@@ -127,6 +128,14 @@ namespace strata::prefill { void set_nonresident_share(double share); }   // SYC
 #include <vector>
 
 namespace {
+bool sycl_mirror_adapt() {
+    static const bool enabled = [] {
+        const char* v = std::getenv("STRATA_SYCL_MIRROR_ADAPT");
+        return v && v[0] == '1';
+    }();
+    return enabled;
+}
+
 // Windows' WDDM driver model: native Windows, or WSL2 (its GPU goes through /dev/dxg to the Windows driver).  There,
 // pinning a large arena into two CUDA contexts leaves WDDM refusing every later allocation (the 5080 + 3090 rig);
 // a Linux driver has no such limit (#253: the 8 GiB cap cost a 4090 + 3060 split 3x of its prompt speed).
@@ -4975,6 +4984,19 @@ int main(int argc, char **argv) try {
         }
     }
 
+    if (sycl_mirror_adapt()) {
+        if (!o.serve || !o.stream_experts || srcp != &gguf_src || !stages.empty() ||
+            o.peer_device >= 0 || remote_caches ||
+            !o.no_prefill_borrow || o.vram_elastic || !mirror_table_d || unmirrored_misses ||
+            o.adapt_every <= 0 || o.adapt_swaps <= 0 || o.adapt_swaps > 96 ||
+            !o.expert_profile_save.empty()) {
+            std::fprintf(stderr, "SYCL mirror adaptive cache requires single-device complete stream mirror, no borrow/elastic/profile save\n");
+            return 1;
+        }
+        std::fprintf(stderr, "SYCL mirror adaptive cache: sync exchange; %lld slots, %lld cache bytes, %llu mirror bytes\n",
+            (long long)xcache.slots(), (long long)xcache.bytes(), (unsigned long long)gguf_src.mirrored_bytes());
+    }
+
     for (auto& stp : stages) {
         GpuStage& st = *stp;
         const auto& lay = strata::kernels::cpu::expert_layout();
@@ -7887,6 +7909,7 @@ int main(int argc, char **argv) try {
             std::all_of(host_res.begin(), host_res.end(), [](int32_t r) { return r >= 0; });
         if (o.adapt_every > 0 && o.adapt_swaps > 0 && !all_experts_resident)
             drive.d.usage.assign((size_t) (g.n_layers * g.n_expert), 0.0f);
+        if (sycl_mirror_adapt()) ver.set_expert_usage_counter(&drive.d.usage);
         // #477 --expert-profile-save: what the adaptive tier learned, kept across restarts (opt-in; off: `heat` stays
         // empty and nothing below runs).  It needs the adaptive tier's counts and the residency table.
         std::vector<double> heat;
@@ -7985,17 +8008,48 @@ int main(int argc, char **argv) try {
                     else vict.emplace_back(u[e], e);
                 }
                 if (cand.empty() || vict.empty()) continue;
-                std::sort(cand.begin(), cand.end(), [](auto& a, auto& b) { return a.first > b.first; });
+                std::sort(cand.begin(), cand.end(), [](auto& a, auto& b) { if (sycl_mirror_adapt() && a.first == b.first) return a.second < b.second; return a.first > b.first; });
                 const size_t nc = std::min(cand.size(), vict.size());
                 std::partial_sort(vict.begin(), vict.begin() + (ptrdiff_t) nc, vict.end(),
-                                  [](auto& a, auto& b) { return a.first < b.first; });
+                                  [](auto& a, auto& b) { if (sycl_mirror_adapt() && a.first == b.first) return a.second < b.second; return a.first < b.first; });
                 for (size_t i = 0; i < nc; ++i) {
                     if (cand[i].first < vict[i].first + 1.5f) break;
                     swaps.push_back({cand[i].first - vict[i].first, (int32_t) l, cand[i].second, vict[i].second});
                 }
             }
-            std::sort(swaps.begin(), swaps.end(), [](const Swap& a, const Swap& b) { return a.gain > b.gain; });
+            std::sort(swaps.begin(), swaps.end(), [](const Swap& a, const Swap& b) { if (sycl_mirror_adapt() && a.gain == b.gain) return a.layer == b.layer ? a.in < b.in : a.layer < b.layer; return a.gain > b.gain; });
             if ((int) swaps.size() > o.adapt_swaps) swaps.resize((size_t) o.adapt_swaps);
+            if (sycl_mirror_adapt()) {
+                std::string error;
+                for (const Swap& s : swaps) {
+                    const size_t in = (size_t)s.layer * g.n_expert + s.in;
+                    const size_t out = (size_t)s.layer * g.n_expert + s.out;
+                    const int32_t slot = host_res[out];
+                    if (host_res[in] >= 0 || slot < 0 || xcache.slot_of(s.layer, s.out) != slot ||
+                        !gguf_src.exchange_cached_expert(s.layer, s.in, s.out, xcache.device_slot(slot), adapt_stream, error)) {
+                        std::fprintf(stderr, "SYCL mirror adaptive exchange failed: %s\n", error.c_str()); return false;
+                    }
+                    xcache.replace(s.layer, s.out, s.in);
+                    host_res[out] = strata::core::kNotResident;
+                    host_res[in] = slot;
+                }
+                if (!swaps.empty()) {
+                    std::vector<unsigned long long> tab(host_res.size(), 0ull);
+                    for (int64_t l = 0; l < g.n_layers; ++l) for (int64_t e = 0; e < g.n_expert; ++e) {
+                        const size_t at = (size_t)(l * g.n_expert + e);
+                        if (host_res[at] < 0) {
+                            if (!gguf_src.pinned(l, e)) { std::fprintf(stderr, "SYCL mirror adaptive mirror complement missing\n"); return false; }
+                            tab[at] = (unsigned long long)gguf_src.device_alias(l, e);
+                        } else if (gguf_src.pinned(l, e)) {
+                            std::fprintf(stderr, "SYCL mirror adaptive mirror/cache overlap\n"); return false;
+                        }
+                    }
+                    dpct::get_in_order_queue().memcpy(mirror_table_d, tab.data(), tab.size() * 8).wait_and_throw();
+                    res_upload();
+                }
+                for (float& value : drive.d.usage) value *= o.adapt_decay;
+                return true;
+            }
             // the copies back read the cache of the card that owns each layer (see resident_stage_swaps)
             auto home_of = [&](int64_t layer) -> SwapHome {
                 const int stn = multi_gpu ? stage_of(layer) : 0;
@@ -10026,6 +10080,8 @@ int main(int argc, char **argv) try {
             // host copies and slots are always current (every writer writes both), so they need nothing
             if (use_mtp && resume > 0 && reread_to <= 0) mtp.kv_restore(resume);
             tr("request", n, geni ? 1 : 0);
+            strata::workload_trace::set_context(0, n, -1);
+            strata::workload_trace::Scope request_trace("request", nullptr, n);
             if (use_mtp) mtp.set_prompt_len(n);
             const int64_t read_from = reread_to > 0 ? 0 : resume;
             conversations.limit_reuse(read_from);
@@ -10474,6 +10530,7 @@ int main(int argc, char **argv) try {
             if (pipe) ver_b.set_history(hist_n > 0 ? d_hist : nullptr, hist_n);
             bool cancelled = false;
             tr("prompt start", n - 1);
+            strata::workload_trace::Scope prompt_trace("request.prefill", nullptr, n - 1);
             // The prompt is read in two parts when it has a turn boundary past `resume`: up to the last <|im_start|>
             // (the conversation so far), a checkpoint there, then the new turn's header.  The next request of the same
             // chat renders the same history - but not always the same header or the thinking of this reply - so that
@@ -10573,6 +10630,7 @@ int main(int argc, char **argv) try {
             if (il_parts > 0)
                 std::fprintf(stderr, "strata batch: the prompt was read in %lld parts, the slots decoding %.0f ms between "
                                      "them\n", (long long) il_parts + 1, il_ms);
+            prompt_trace.finish();
             const double prompt_ms = std::chrono::duration<double, std::milli>(Clock::now() - r0).count();
             std::printf("REUSED %lld\n", (long long) resume);   // the prompt is read; the first window comes next
             std::fflush(stdout);
@@ -10607,6 +10665,8 @@ int main(int argc, char **argv) try {
             for (int64_t i = 0; i < n - 1; ++i) consumed.push_back((int32_t) ids[(size_t) i]);
             const char* finish = "length";
             const Clock::time_point d0 = Clock::now();
+            strata::workload_trace::set_context(n - 1, 0, -1);
+            strata::workload_trace::Scope decode_trace("request.decode");
             // STRATA_DECODE_TIMING=1: where a request's decode time goes (one line per request)
             static const bool dec_timing = std::getenv("STRATA_DECODE_TIMING") != nullptr;
             struct DecSnap {
@@ -11393,6 +11453,8 @@ int main(int argc, char **argv) try {
                     return 1;
                 }
                 tr("window", p, T);
+                strata::workload_trace::set_context(p, T, -1);
+                strata::workload_trace::Scope verify_trace("decode.verify", nullptr, T);
                 const Clock::time_point tw0 = Clock::now();
                 if (!ver.run(T, window.data(), p, win_pool_fn, win_pool_user, outv.data(), err) || drive.d.failed) {
                     std::printf("ERR %s\n", drive.d.failed && drive.d.fail ? drive.d.fail : err.c_str());
@@ -11407,11 +11469,15 @@ int main(int argc, char **argv) try {
                     if (mtp.top2(a) == outv[(size_t) a]) ++t2_hit[a];
                 }
                 const Clock::time_point tw1 = Clock::now();
+                verify_trace.finish();
+                strata::workload_trace::Scope commit_trace("decode.commit_emit", nullptr, T);
                 std::thread adapt_thr;   // the adaptive tier beside the commit and the draft (as in generate)
                 bool adapt_ok = true;
-                // (--adapt-async 1: the asynchronous tier above instead, ticked before the window)
-                if (!drive.d.usage.empty() && !ajob && ((rounds + 1) % o.adapt_every) == 0)
-                    adapt_thr = std::thread([&] { adapt_ok = adapt(); });
+                if (!drive.d.usage.empty() && !ajob && ((rounds + 1) % o.adapt_every) == 0) {
+                    if (sycl_mirror_adapt()) adapt_ok = adapt();
+                    else adapt_thr = std::thread([&] { adapt_ok = adapt(); });
+                }
+                if (sycl_mirror_adapt() && !adapt_ok) { std::printf("ERR SYCL mirror adaptive exchange failed\n"); return 1; }
                 if (!ver.commit(a + 1, err)) {
                     if (adapt_thr.joinable()) adapt_thr.join();
                     std::printf("ERR %s\n", err.c_str());
@@ -11458,12 +11524,15 @@ int main(int argc, char **argv) try {
                 std::fflush(stdout);
                 ++rounds;
                 const Clock::time_point tw2 = Clock::now();
+                commit_trace.finish();
+                strata::workload_trace::Scope draft_trace("decode.draft", nullptr, T);
                 // coupled drafts with penalties: the next window's row-0 history (`consumed` holds this window's
                 // commit, outv[a] is its row 0) - the drafts extend it on the device as the verify rows will
                 if (use_mtp && hist_n > 0 && mtp.coupled() && !eos && produced_n < max_new)
                     mtp.set_draft_history(consumed.data(), (int64_t) consumed.size(), outv[(size_t) a]);
                 const bool drafted = !use_mtp || eos || produced_n >= max_new ||
                                      mtp.draft(T, outv.data(), p, a, drafts.data(), err, dprob.data(), (float) req_spec_min_p);
+                draft_trace.finish();
                 {
                     const Clock::time_point tw3 = Clock::now();
                     auto msd = [](Clock::time_point a0, Clock::time_point b0) { return std::chrono::duration<double, std::milli>(b0 - a0).count(); };
@@ -11491,6 +11560,7 @@ int main(int argc, char **argv) try {
                 p += a + 1;
             }
             const double decode_ms = std::chrono::duration<double, std::milli>(Clock::now() - d0).count();
+            decode_trace.finish();
             // the last commit (set_commit_async): the session is complete before anything reads or copies it
             if (!ver.wait_commit(err)) {
                 std::printf("ERR %s\n", err.c_str());
@@ -11718,6 +11788,8 @@ int main(int argc, char **argv) try {
                 admit_slot = -1;
             }
             if (drive.routing != nullptr) std::fflush(drive.routing);   // the routing trace survives a crash and is watchable mid-session
+            request_trace.finish();
+            strata::workload_trace::flush();
             // "12288 of 98179" when cancelled mid-read (#471), the rate from what was read
             char read_txt[64];
             if (cancelled)

@@ -25,10 +25,15 @@
 
 #define DPCT_PROFILING_ENABLED
 #include <sycl/sycl.hpp>
+#include <sycl/ext/intel/esimd.hpp>
+#include <sycl/ext/intel/esimd/xmx/dpas.hpp>
+#include <sycl/ext/oneapi/matrix/matrix-intel.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_math.hpp"
 #include "strata/sycl_queue.hpp"
+#include "strata/workload_trace.hpp"
 #include "strata/kernels/native_mmvq.hpp"
+#include "strata/kernels/iq4_lut.hpp"
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 #include "strata/kernels/iq_kernels.hpp"
@@ -1878,6 +1883,53 @@ struct WideIQ4XS {
     }
     static float dot(const W& r, const A& v) { return r.d * v.ds * (float) dp4a4(r.hi, v.u1, dp4a4(r.lo, v.u0, 0)); }
 };
+template<bool NoCodebook, bool AddXorMask = false> struct WideIQ4LookupProbe : WideIQ4XS {
+    static W load(const Block* b, int g) {
+        W r; r.sb = g;
+        const auto* q2 = reinterpret_cast<const sycl::int2*>(b->qs + 16 * g);
+        const sycl::int2 qa = q2[0], qb = q2[1];
+        const uint32_t v[4] = {(uint32_t)qa.x(), (uint32_t)qa.y(), (uint32_t)qb.x(), (uint32_t)qb.y()};
+        int lo[4], hi[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const uint32_t lower = v[i] & 0x0f0f0f0f, upper = (v[i] >> 4) & 0x0f0f0f0f;
+            if constexpr (NoCodebook) { lo[i] = (int)lower; hi[i] = (int)upper; }
+            else { lo[i] = (int)iq4_decode::bit_select_impl<AddXorMask>(lower); hi[i] = (int)iq4_decode::bit_select_impl<AddXorMask>(upper); }
+        }
+        r.lo = {lo[0], lo[1], lo[2], lo[3]}; r.hi = {hi[0], hi[1], hi[2], hi[3]};
+        const int ls = ((b->scales_l[g / 2] >> (4 * (g & 1))) & 15) | (((b->scales_h >> (2 * g)) & 3) << 4);
+        r.d = (float)b->d * (float)(ls - 32);
+        return r;
+    }
+    // apply is inherited verbatim, retaining the original float expression.
+};
+struct WideIQ4GroupLookup : WideIQ4XS {
+    __dpct_inline__ static uint32_t lookup(uint32_t word, uint32_t lane_value) {
+        const auto sg = sycl::ext::oneapi::this_work_item::get_sub_group();
+        uint32_t result = 0;
+#pragma unroll
+        for (int b = 0; b < 4; ++b) {
+            const uint32_t index = (word >> (8 * b)) & 15;
+            result |= sycl::select_from_group(sg, lane_value, index) << (8 * b);
+        }
+        return result;
+    }
+    static W load(const Block* b, int g, uint32_t lane_value) {
+        W r; r.sb = g;
+        const auto* q = reinterpret_cast<const sycl::int2*>(b->qs + 16 * g);
+        const auto a = q[0], c = q[1];
+        const uint32_t v[] = {(uint32_t)a.x(), (uint32_t)a.y(), (uint32_t)c.x(), (uint32_t)c.y()};
+        int lo[4], hi[4];
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            lo[i] = (int)lookup(v[i] & 0x0f0f0f0f, lane_value);
+            hi[i] = (int)lookup((v[i] >> 4) & 0x0f0f0f0f, lane_value);
+        }
+        r.lo = {lo[0],lo[1],lo[2],lo[3]}; r.hi = {hi[0],hi[1],hi[2],hi[3]};
+        const int ls = ((b->scales_l[g / 2] >> (4 * (g & 1))) & 15) | (((b->scales_h >> (2 * g)) & 3) << 4);
+        r.d = (float)b->d * (float)(ls - 32); return r;
+    }
+};
 // SYCL port: native_mmvq_wide_kernel with RPW rows per sub-group (STRATA_MMVQ_WIDE_K_RPW): each column's activations
 // are loaded once (act) and used by the RPW rows (dot); a row's lanes, its k order and its butterfly are the
 // one-row kernel's, so every output is the same bits. At 2-4 columns the one-row kernel reads ~5x its weight bytes
@@ -1932,10 +1984,24 @@ void native_mmvq_wide_kernel(const typename F::Block* __restrict__ w, const Q81B
     const int g = lane & 7, sub = lane >> 3;
     const typename F::Block* wr = w + std::size_t(row) * blocks_per_row;
     float acc[NCOLS] = {};
-    for (int kbx = sub; kbx < blocks_per_row; kbx += 4) {
-        const typename F::W wv = F::load(wr + kbx, g);
+    if constexpr (std::is_same_v<F, WideIQ4GroupLookup>) {
+        const uint32_t lane_value = iq4_lut4((uint32_t)(lane & 15)) & 255;
+        // All subgroup members execute every integer shuffle, including the
+        // incomplete final group. Invalid virtual lanes skip the FP update.
+        for (int k0 = 0; k0 < blocks_per_row; k0 += 4) {
+            const int kbx = k0 + sub;
+            const typename F::W wv = F::load(wr + (kbx < blocks_per_row ? kbx : 0), g, lane_value);
+            if (kbx < blocks_per_row) {
 #pragma unroll
-        for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+                for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+            }
+        }
+    } else {
+        for (int kbx = sub; kbx < blocks_per_row; kbx += 4) {
+            const typename F::W wv = F::load(wr + kbx, g);
+#pragma unroll
+            for (int j = 0; j < NCOLS; ++j) acc[j] += F::apply(wv, x + std::size_t(j) * x_stride + kbx * (QK / Q8K));
+        }
     }
     auto sg = item.get_sub_group();
 #pragma unroll
@@ -1962,6 +2028,66 @@ void launch_wide(const void* weights, const void* x_q8_1, float* y, int n_in, in
     s->parallel_for<dpct_kernel_name<class native_mmvq_wide, F, dpct_kernel_scalar<NCOLS>>>(
         sycl::nd_range<3>(sycl::range(1, 1, blocks) * sycl::range(1, WARPS, WARP), sycl::range(1, WARPS, WARP)),
         [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { native_mmvq_wide_kernel<F, NCOLS>(w, x, y, n_in, n_out); });
+}
+namespace iq4jm=sycl::ext::oneapi::experimental::matrix;
+inline float iq4_xmx_float_finish(const WideIQ4XS::W& pw,const Q81Block* activation,int sumi){
+    return pw.d*(float)activation->ds[0]*(float)sumi;
+}
+template<int NT,int KB>class IQ4XmxVirtualKernel;
+template<int NT,int KB>
+void iq4_xmx_virtual_launch(const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    using F=WideIQ4LookupProbe<false>;constexpr int NR=16,NS=16,XB=KB*8,RB=KB*sizeof(F::Block);
+    q->parallel_for<IQ4XmxVirtualKernel<NT,KB>>(sycl::nd_range<1>((N+NR-1)/NR*256,256),
+      [=](sycl::nd_item<1> it)[[sycl::reqd_sub_group_size(16)]]{
+        auto group=it.get_group();auto sg=it.get_sub_group();int lid=it.get_local_linear_id(),sid=lid/16,lane=lid%16,base=it.get_group_linear_id()*NR,row=base+lane;
+        auto& partial=*sycl::ext::oneapi::group_local_memory_for_overwrite<float[32*NT*NR]>(group);
+        for(int virtual_id=sid;virtual_id<32;virtual_id+=NS){
+        float acc[NT]={};
+        for(int seg=virtual_id;seg<XB;seg+=32){
+            F::W pw{};if(row<N)pw=F::load(reinterpret_cast<const F::Block*>(w+uint32_t(row)*uint32_t(RB))+seg/8,seg%8);
+            iq4jm::joint_matrix<sycl::sub_group,int8_t,iq4jm::use::a,NT,32,iq4jm::layout::row_major> A;
+            iq4jm::joint_matrix<sycl::sub_group,int8_t,iq4jm::use::b,32,NR,iq4jm::layout::ext_intel_packed> B;
+            iq4jm::joint_matrix<sycl::sub_group,int32_t,iq4jm::use::accumulator,NT,NR> C;
+
+                auto pa=sycl::address_space_cast<sycl::access::address_space::global_space,sycl::access::decorated::no>(x[seg].qs);
+                iq4jm::joint_matrix_load(sg,A,pa,XB*sizeof(Q81Block));
+                iq4jm::joint_matrix_fill(sg,B,0);
+
+                    int kr=0;
+                    iq4jm::joint_matrix_apply(sg,B,[&](auto& element){
+                        const int word=kr<4?pw.lo[0]:kr<8?pw.lo[1]:kr<12?pw.lo[2]:kr<16?pw.lo[3]:kr<20?pw.hi[0]:kr<24?pw.hi[1]:kr<28?pw.hi[2]:pw.hi[3];
+                        element=int8_t(uint32_t(word)>>(8*(kr%4)));++kr;
+                    });
+
+
+            iq4jm::joint_matrix_fill(sg,C,0);iq4jm::joint_matrix_mad(sg,C,A,B,C);
+
+                int mr=0;
+                iq4jm::joint_matrix_apply(sg,C,[&](auto& element){
+                    acc[mr]+=iq4_xmx_float_finish(pw,x+mr*XB+seg,int(element));++mr;
+                });
+
+
+        }
+#pragma unroll
+        for(int j=0;j<NT;++j)partial[virtual_id*NT*NR+j*NR+lane]=acc[j];
+        }
+        it.barrier(sycl::access::fence_space::local_space);
+        const int vl=lid%32;
+        for(int rr=lid/32;rr<NR;rr+=8){
+#pragma unroll
+        for(int j=0;j<NT;++j){float v=partial[vl*NT*NR+j*NR+rr];v+=partial[(vl^16)*NT*NR+j*NR+rr];
+#pragma unroll
+            for(int off=8;off;off>>=1)v+=sycl::permute_group_by_xor(sg,v,off);
+            if(vl==0&&base+rr<N)y[uint32_t(j)*uint32_t(N)+uint32_t(base+rr)]=v;
+        }
+        }
+    });
+}
+template<int KB>void iq4_xmx_virtual_T(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+#define IQ4_XMX_T(t) case t:iq4_xmx_virtual_launch<t,KB>(w,x,y,N,q);break
+    switch(T){IQ4_XMX_T(1);IQ4_XMX_T(2);IQ4_XMX_T(3);IQ4_XMX_T(4);IQ4_XMX_T(5);IQ4_XMX_T(6);IQ4_XMX_T(7);IQ4_XMX_T(8);}
+#undef IQ4_XMX_T
 }
 inline bool wide_k() {   // STRATA_MMVQ_WIDE_K=0: Q4_K/Q5_K/IQ4_XS through the multi kernel (the old path)
     static const bool v = std::getenv("STRATA_MMVQ_WIDE_K") == nullptr || std::atoi(std::getenv("STRATA_MMVQ_WIDE_K")) != 0;
@@ -3352,6 +3478,9 @@ void native_q3_k_f32(const void* weights, const float* x, void* scratch_q8_1,
     native_q3_k_mmvq(weights, scratch_q8_1, y, n_in, n_out, ncols, stream);
 }
 
+void launch_iq4_pair_reuse(int,const void*,const void*,float*,int,int,int,void*);
+void launch_iq4_q8_split(int,const void*,const void*,float*,int,int,int,void*);
+static void launch_iq4_esimd_t4(int,const void*,const void*,float*,int,int,int,void*);
 void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
                        int n_in, int n_out, int ncols, void* stream) {
     validate_shape(n_in, ncols, 256);
@@ -3360,6 +3489,38 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
     validate_pointer(x_q8_1);
     validate_pointer(y);
     validate_stream(stream);
+
+    static const bool pair_reuse=[](){const char* e=std::getenv("STRATA_SYCL_IQ4_PAIR_REUSE");return e&&e[0]=='1';}();
+    if(pair_reuse&&ncols>=1&&ncols<=4&&(n_in==2560||n_in==6144)&&
+       !(ncols==1&&n_in==2560&&n_out==640)&&
+       !(reinterpret_cast<uintptr_t>(weights)&63)&&!(reinterpret_cast<uintptr_t>(x_q8_1)&63)){
+        static const bool split=[](){const char* e=std::getenv("STRATA_SYCL_IQ4_Q8_SPLIT");return e&&e[0]=='1';}();
+        const bool selected=(n_in==2560&&n_out==10240&&ncols==4)||(n_in==6144&&n_out==2560&&ncols==4)||(n_in==2560&&n_out==106299&&ncols==1);
+        if(split&&selected)launch_iq4_q8_split(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
+        else launch_iq4_pair_reuse(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
+        return;
+    }
+    static const bool esimd_t4=[](){const char* e=std::getenv("STRATA_SYCL_IQ4_T4_ESIMD");return e&&e[0]=='1';}();
+    if(esimd_t4&&ncols==4&&(n_in==2560||n_in==6144)&&
+       !(reinterpret_cast<uintptr_t>(weights)&63)&&!(reinterpret_cast<uintptr_t>(x_q8_1)&63)){
+        launch_iq4_esimd_t4(1,weights,x_q8_1,y,n_in,n_out,ncols,stream);
+        launch_check();return;
+    }
+    static const bool selective = [] { const char* e=std::getenv("STRATA_SYCL_IQ4_T4_XMX");return e && e[0]=='1'; }();
+    const bool supported=(n_in==2560 && (n_out==6144 || n_out==10240 || n_out==12288 || n_out==248320)) || (n_in==6144 && n_out==2560);
+    if(selective && ncols==4 && supported){
+        auto* bytes=static_cast<const uint8_t*>(weights);auto* activation=static_cast<const Q81Block*>(x_q8_1);auto* q=strata::q_of(stream);
+        if(n_in==2560)iq4_xmx_virtual_T<10>(ncols,bytes,activation,y,n_out,q);
+        else iq4_xmx_virtual_T<24>(ncols,bytes,activation,y,n_out,q);
+        launch_check();return;
+    }
+    static const bool use_bit_select = [] {
+        const char* v = std::getenv("STRATA_SYCL_IQ4_LOOKUP");
+        return v && std::atoi(v) != 0;
+    }();
+    if (use_bit_select && try_wide<WideIQ4LookupProbe<false>>(weights, x_q8_1, y, n_in, n_out, ncols, stream)) {
+        launch_check(); return;
+    }
     if (try_wide<WideIQ4XS>(weights, x_q8_1, y, n_in, n_out, ncols, stream)) { launch_check(); return; }
     STRATA_WAVE_MMVQ(IQ4XSTraits)
     if (ncols > 1) {
@@ -3780,6 +3941,7 @@ std::size_t native_mmvq_weight_bytes(int ggml_type, int n_in, int n_out) {
 
 void native_mmvq(int ggml_type, const void* weights, const void* x_q8_1, float* y,
                  int n_in, int n_out, int ncols, void* stream) {
+    strata::workload_trace::Scope trace("decode.mmvq", stream, ncols, n_out, n_in, n_in, n_out, ggml_type);
     switch (ggml_type) {
     case 2: native_q4_0_mmvq(weights, x_q8_1, y, n_in, n_out, ncols, stream); break;
     case 6: native_q5_0_mmvq(weights, x_q8_1, y, n_in, n_out, ncols, stream); break;
@@ -3796,6 +3958,321 @@ void native_mmvq(int ggml_type, const void* weights, const void* x_q8_1, float* 
         iq_mmvq(ggml_type, weights, x_q8_1, y, n_in, n_out, ncols, stream); break;
     default: throw std::invalid_argument("unsupported native MMVQ GGML type");
     }
+}
+
+
+namespace {
+namespace i4e=sycl::ext::intel::esimd;
+template<int L>SYCL_ESIMD_FUNCTION inline i4e::simd<uint32_t,L> iq4_e_lookup(i4e::simd<uint32_t,L> q){
+    constexpr uint32_t table[]={0x81818181u,0x98989898u,0xadadadadu,0xbfbfbfbfu,
+        0xcfcfcfcfu,0xddddddddu,0xeaeaeaeau,0xf6f6f6f6u,
+        0x01010101u,0x0d0d0d0du,0x19191919u,0x26262626u,
+        0x35353535u,0x45454545u,0x59595959u,0x71717171u};
+    constexpr auto select=(i4e::bfn_t::x&~i4e::bfn_t::z)|(i4e::bfn_t::y&i4e::bfn_t::z);
+    i4e::simd<uint32_t,L> mask[4],a[8],b[4],c[2];
+#pragma unroll
+    for(int i=0;i<4;++i){i4e::simd<uint32_t,L> bit=(q>>i)&0x01010101u;mask[i]=(bit<<8)-bit;}
+#pragma unroll
+    for(int i=0;i<8;++i)a[i]=i4e::bfn<select>(i4e::simd<uint32_t,L>(table[2*i]),i4e::simd<uint32_t,L>(table[2*i+1]),mask[0]);
+#pragma unroll
+    for(int i=0;i<4;++i)b[i]=i4e::bfn<select>(a[2*i],a[2*i+1],mask[1]);
+#pragma unroll
+    for(int i=0;i<2;++i)c[i]=i4e::bfn<select>(b[2*i],b[2*i+1],mask[2]);
+    return i4e::bfn<select>(c[0],c[1],mask[3]);
+}
+template<int NT,int KB>class IQ4EsimdT4;
+template<int NT,int KB>
+void iq4_e_launch(const uint8_t* weights,const Q81Block* acts,float* y,int N,sycl::queue* q){
+    constexpr int NR=16,XB=KB*8,RB=KB*136;
+    q->parallel_for<IQ4EsimdT4<NT,KB>>(sycl::nd_range<1>(size_t((N+15)/16)*16,16),
+        [=](sycl::nd_item<1> it)[[intel::sycl_explicit_simd]]{
+            i4e::slm_init<32*NT*16*4>();
+            const int sid=it.get_local_linear_id(),base=it.get_group_linear_id()*16;
+            i4e::simd<uint32_t,16> row(base,1);auto valid=row<uint32_t(N);
+            for(int virtual_id=sid;virtual_id<32;virtual_id+=16){
+            i4e::simd<float,16> acc[NT];
+#pragma unroll
+            for(int mr=0;mr<NT;++mr)acc[mr]=0.f;
+            for(int seg=virtual_id;seg<XB;seg+=32){
+                const int block=seg/8,part=seg%8;
+                auto packed=i4e::load_2d<uint32_t,4,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                    RB-1,N-1,RB-1,block*34+2+part*4,base);
+                auto header=i4e::load_2d<uint32_t,2,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                    RB-1,N-1,RB-1,block*34,base);
+                i4e::simd<uint32_t,16> dh=header.template select<16,1>(0),sl=header.template select<16,1>(16);
+                i4e::simd<uint16_t,16> bits=dh&0xffffu;
+                i4e::simd<float,16> d=bits.template bit_cast_view<sycl::half>().read();
+                i4e::simd<uint32_t,16> ls=((sl>>(4*part))&15u)|(((dh>>(16+2*part))&3u)<<4);
+                i4e::simd<int32_t,16> scale=ls;scale-=32;
+                i4e::simd<float,16> fscale=scale;const i4e::simd<float,16> dw=d*fscale;
+                const auto lo=iq4_e_lookup<64>(packed&0x0f0f0f0fu);
+                const auto hi=iq4_e_lookup<64>((packed>>4)&0x0f0f0f0fu);
+                i4e::simd<uint32_t,128> words;
+                words.template select<64,1>(0)=lo;words.template select<64,1>(64)=hi;
+                i4e::simd<int8_t,512> B=words.template bit_cast_view<int8_t>();
+                auto a_words=i4e::load_2d<uint32_t,8,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                    XB*36-1,NT-1,XB*36-1,seg*9+1,0);
+                i4e::simd<int8_t,NT*32> A=a_words.template bit_cast_view<int8_t>();
+                i4e::simd<int32_t,NT*16> zero=0;
+                auto C=i4e::xmx::dpas<8,NT,int32_t>(zero,B,A);
+#pragma unroll
+                for(int mr=0;mr<NT;++mr){
+                    i4e::simd<uint16_t,1> dbits=reinterpret_cast<const uint16_t*>(acts)[(mr*XB+seg)*18];
+                    i4e::simd<float,1> dvalue=dbits.template bit_cast_view<sycl::half>().read();
+                    const float ds=dvalue[0];
+                    i4e::simd<int32_t,16> ci=C.template select<16,1>(mr*16);
+                    i4e::simd<float,16> dot=ci;const i4e::simd<float,16> factor=dw*ds;
+                    i4e::simd<float,16> term=factor*dot;
+                    // Keep the multiply rounded before the independent chain add.
+                    term.merge(0.f,!valid);
+                    const i4e::simd<float,16> next=acc[mr]+term;acc[mr].merge(next,valid);
+                }
+            }
+#pragma unroll
+            for(int mr=0;mr<NT;++mr)i4e::slm_block_store<float,16>(virtual_id*NT*64+mr*64,acc[mr]);
+            }
+            i4e::barrier();
+            if(sid<NT){
+                i4e::simd<float,16> p[16];
+#pragma unroll
+                for(int v=0;v<16;++v)p[v]=i4e::slm_block_load<float,16>(v*NT*64+sid*64)+
+                                             i4e::slm_block_load<float,16>((v+16)*NT*64+sid*64);
+#pragma unroll
+                for(int off=8;off;off/=2){
+#pragma unroll
+                    for(int v=0;v<off;++v)p[v]+=p[v+off];
+                }
+                i4e::simd<uint32_t,16> offsets=(row+uint32_t(sid)*uint32_t(N))*4u;
+                i4e::scatter<float,16>(y,offsets,p[0],valid);
+            }
+        });
+}
+template<int KB>void iq4_e_T(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    switch(T){
+#define GO(t) case t:iq4_e_launch<t,KB>(w,x,y,N,q);break
+        GO(1);GO(2);GO(3);GO(4);GO(5);GO(6);GO(7);GO(8);
+#undef GO
+    }
+}
+} // anonymous namespace
+static void launch_iq4_esimd_t4(int mode,const void* w,const void* x,float* y,int K,int N,int T,void* stream){
+    if(mode==0){native_mmvq(23,w,x,y,K,N,T,stream);return;}
+    if(mode!=1||!w||!x||!y||!stream||N<1||T<1||T>8||(K!=2560&&K!=6144))
+        throw std::invalid_argument("IQ4 ESIMD shape");
+    if(T!=4){native_mmvq(23,w,x,y,K,N,T,stream);return;}
+    if((reinterpret_cast<uintptr_t>(w)&63)||(reinterpret_cast<uintptr_t>(x)&63)){
+        native_mmvq(23,w,x,y,K,N,T,stream);return;
+    }
+    if(K==2560)iq4_e_T<10>(T,static_cast<const uint8_t*>(w),static_cast<const Q81Block*>(x),y,N,strata::q_of(stream));
+    else iq4_e_T<24>(T,static_cast<const uint8_t*>(w),static_cast<const Q81Block*>(x),y,N,strata::q_of(stream));
+}
+
+
+namespace {
+template<int NT,int KB>class PrivateIQ4PairAllT;
+template<int NT,int KB>
+void iq4_pair_all_t_launch(const uint8_t* weights,const Q81Block* acts,float* y,int N,sycl::queue* q){
+    constexpr int NR=16,XB=KB*8,RB=KB*136;
+    q->parallel_for<PrivateIQ4PairAllT<NT,KB>>(sycl::nd_range<1>(size_t((N+15)/16)*16,16),
+        [=](sycl::nd_item<1> it)[[intel::sycl_explicit_simd]]{
+            i4e::slm_init<32*NT*16*4>();
+            const int sid=it.get_local_linear_id(),base=it.get_group_linear_id()*16;
+            i4e::simd<uint32_t,16> row(base,1);auto valid=row<uint32_t(N);
+            i4e::simd<float,16> acc[2][NT];
+#pragma unroll
+            for(int p=0;p<2;++p){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)acc[p][mr]=0.f;
+            }
+            for(int block=sid/4;block<KB;block+=4){
+                auto header=i4e::load_2d<uint32_t,2,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                    RB-1,N-1,RB-1,block*34,base);
+                i4e::simd<uint32_t,16> dh=header.template select<16,1>(0),sl=header.template select<16,1>(16);
+                i4e::simd<uint16_t,16> bits=dh&0xffffu;
+                i4e::simd<float,16> d=bits.template bit_cast_view<sycl::half>().read();
+                {const int quarter=sid%4;
+                    auto packed8=i4e::load_2d<uint32_t,8,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                        RB-1,N-1,RB-1,block*34+2+quarter*8,base);
+#pragma unroll
+                    for(int half=0;half<2;++half){
+                        const int part=quarter*2+half,seg=block*8+part;
+                        i4e::simd<uint32_t,64> packed=packed8.template select<64,1>(half*64);
+                        i4e::simd<uint32_t,16> ls=((sl>>(4*part))&15u)|(((dh>>(16+2*part))&3u)<<4);
+                        i4e::simd<int32_t,16> scale=ls;scale-=32;
+                        i4e::simd<float,16> fscale=scale;const i4e::simd<float,16> dw=d*fscale;
+                        const auto lo=iq4_e_lookup<64>(packed&0x0f0f0f0fu);
+                        const auto hi=iq4_e_lookup<64>((packed>>4)&0x0f0f0f0fu);
+                        i4e::simd<uint32_t,128> words;
+                        words.template select<64,1>(0)=lo;words.template select<64,1>(64)=hi;
+                        i4e::simd<int8_t,512> B=words.template bit_cast_view<int8_t>();
+                        auto a_words=i4e::load_2d<uint32_t,8,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                            XB*36-1,NT-1,XB*36-1,seg*9+1,0);
+                        i4e::simd<int8_t,NT*32> A=a_words.template bit_cast_view<int8_t>();
+                        i4e::simd<int32_t,NT*16> zero=0;
+                        auto C=i4e::xmx::dpas<8,NT,int32_t>(zero,B,A);
+#pragma unroll
+                        for(int mr=0;mr<NT;++mr){
+                            i4e::simd<uint16_t,1> dbits=reinterpret_cast<const uint16_t*>(acts)[(mr*XB+seg)*18];
+                            i4e::simd<float,1> dvalue=dbits.template bit_cast_view<sycl::half>().read();
+                            const float ds=dvalue[0];
+                            i4e::simd<int32_t,16> ci=C.template select<16,1>(mr*16);
+                            i4e::simd<float,16> dot=ci;const i4e::simd<float,16> factor=dw*ds;
+                            i4e::simd<float,16> term=factor*dot;
+                            term.merge(0.f,!valid);
+                            const i4e::simd<float,16> next=acc[half][mr]+term;acc[half][mr].merge(next,valid);
+                        }
+                    }
+                }
+            }
+#pragma unroll
+            for(int part=0;part<2;++part){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)i4e::slm_block_store<float,16>((sid*2+part)*NT*64+mr*64,acc[part][mr]);
+            }
+            i4e::barrier();
+            if(sid<NT){
+            i4e::simd<float,16> p[16];
+#pragma unroll
+            for(int v=0;v<16;++v)p[v]=i4e::slm_block_load<float,16>(v*NT*64+sid*64)+
+                i4e::slm_block_load<float,16>((v+16)*NT*64+sid*64);
+#pragma unroll
+            for(int off=8;off;off/=2){
+#pragma unroll
+                for(int v=0;v<off;++v)p[v]+=p[v+off];
+            }
+            i4e::simd<uint32_t,16> offsets=(row+uint32_t(sid)*uint32_t(N))*4u;
+            i4e::scatter<float,16>(y,offsets,p[0],valid);
+            }
+        });
+}
+template<int KB>
+void iq4_pair_all_t_dispatch(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    switch(T){
+    case 1:iq4_pair_all_t_launch<1,KB>(w,x,y,N,q);break;
+    case 2:iq4_pair_all_t_launch<2,KB>(w,x,y,N,q);break;
+    case 3:iq4_pair_all_t_launch<3,KB>(w,x,y,N,q);break;
+    case 4:iq4_pair_all_t_launch<4,KB>(w,x,y,N,q);break;
+    }
+}
+}
+
+void launch_iq4_pair_reuse(int mode,const void* w,const void* x,float* y,int K,int N,int T,void* stream){
+    if(mode==0||T<1||T>4){native_mmvq(23,w,x,y,K,N,T,stream);return;}
+    if(mode!=1||!w||!x||!y||!stream||N<1||(K!=2560&&K!=6144)||
+       (reinterpret_cast<uintptr_t>(w)&63)||(reinterpret_cast<uintptr_t>(x)&63))
+        throw std::invalid_argument("IQ4 pair reuse arguments");
+    if(K==2560)iq4_pair_all_t_dispatch<10>(T,static_cast<const uint8_t*>(w),static_cast<const Q81Block*>(x),y,N,strata::q_of(stream));
+    else iq4_pair_all_t_dispatch<24>(T,static_cast<const uint8_t*>(w),static_cast<const Q81Block*>(x),y,N,strata::q_of(stream));
+    launch_check();
+}
+namespace {
+template<int NT,int KB>class PrivateIQ4Q8Split;
+template<int NT,int KB>
+void iq4_q8_split_launch(const uint8_t* weights,const Q81Block* acts,float* y,int N,sycl::queue* q){
+    constexpr int NR=16,XB=KB*8,RB=KB*136;
+    q->parallel_for<PrivateIQ4Q8Split<NT,KB>>(sycl::nd_range<1>(size_t((N+15)/16)*16,16),
+        [=](sycl::nd_item<1> it)[[intel::sycl_explicit_simd]]{
+            i4e::slm_init<32*NT*16*4>();
+            const int sid=it.get_local_linear_id(),base=it.get_group_linear_id()*16;
+            i4e::simd<uint32_t,16> row(base,1);auto valid=row<uint32_t(N);
+            i4e::simd<float,16> acc[2][NT];
+#pragma unroll
+            for(int p=0;p<2;++p){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)acc[p][mr]=0.f;
+            }
+            for(int block=sid/4;block<KB;block+=4){
+                auto header=i4e::load_2d<uint32_t,2,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                    RB-1,N-1,RB-1,block*34,base);
+                i4e::simd<uint32_t,16> dh=header.template select<16,1>(0),sl=header.template select<16,1>(16);
+                i4e::simd<uint16_t,16> bits=dh&0xffffu;
+                i4e::simd<float,16> d=bits.template bit_cast_view<sycl::half>().read();
+                {const int quarter=sid%4;
+                    const int first_segment=block*8+quarter*2;
+                    auto aq=i4e::load_2d<uint32_t,16,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                        XB*36-1,NT-1,XB*36-1,first_segment*9,0);
+                    auto tail=i4e::load_2d<uint32_t,2,NT,1,false,false>(reinterpret_cast<const uint32_t*>(acts),
+                        XB*36-1,NT-1,XB*36-1,first_segment*9+16,0);
+                    constexpr int AP=decltype(aq)::length/NT,TP=decltype(tail)::length/NT;
+                    static_assert(AP==16 && TP==2);
+                    auto packed8=i4e::load_2d<uint32_t,8,16,1,true,false>(reinterpret_cast<const uint32_t*>(weights),
+                        RB-1,N-1,RB-1,block*34+2+quarter*8,base);
+#pragma unroll
+                    for(int half=0;half<2;++half){
+                        const int part=quarter*2+half,seg=block*8+part;
+                        i4e::simd<uint32_t,64> packed=packed8.template select<64,1>(half*64);
+                        i4e::simd<uint32_t,16> ls=((sl>>(4*part))&15u)|(((dh>>(16+2*part))&3u)<<4);
+                        i4e::simd<int32_t,16> scale=ls;scale-=32;
+                        i4e::simd<float,16> fscale=scale;const i4e::simd<float,16> dw=d*fscale;
+                        const auto lo=iq4_e_lookup<64>(packed&0x0f0f0f0fu);
+                        const auto hi=iq4_e_lookup<64>((packed>>4)&0x0f0f0f0fu);
+                        i4e::simd<uint32_t,128> words;
+                        words.template select<64,1>(0)=lo;words.template select<64,1>(64)=hi;
+                        i4e::simd<int8_t,512> B=words.template bit_cast_view<int8_t>();
+                        i4e::simd<uint32_t,NT*8> a_words;
+#pragma unroll
+                        for(int mr=0;mr<NT;++mr){
+                            if(half==0)a_words.template select<8,1>(mr*8)=aq.template select<8,1>(mr*AP+1);
+                            else{
+                                a_words.template select<6,1>(mr*8)=aq.template select<6,1>(mr*AP+10);
+                                a_words.template select<2,1>(mr*8+6)=tail.template select<2,1>(mr*TP);
+                            }
+                        }
+                        i4e::simd<int8_t,NT*32> A=a_words.template bit_cast_view<int8_t>();
+                        i4e::simd<int32_t,NT*16> zero=0;
+                        auto C=i4e::xmx::dpas<8,NT,int32_t>(zero,B,A);
+#pragma unroll
+                        for(int mr=0;mr<NT;++mr){
+                            i4e::simd<uint32_t,1> dhdr=half==0?aq.template select<1,1>(mr*AP).read():aq.template select<1,1>(mr*AP+9).read();
+                            i4e::simd<uint16_t,1> dbits=dhdr&0xffffu;
+                            i4e::simd<float,1> dvalue=dbits.template bit_cast_view<sycl::half>().read();
+                            const float ds=dvalue[0];
+                            i4e::simd<int32_t,16> ci=C.template select<16,1>(mr*16);
+                            i4e::simd<float,16> dot=ci;const i4e::simd<float,16> factor=dw*ds;
+                            i4e::simd<float,16> term=factor*dot;
+                            term.merge(0.f,!valid);
+                            const i4e::simd<float,16> next=acc[half][mr]+term;acc[half][mr].merge(next,valid);
+                        }
+                    }
+                }
+            }
+#pragma unroll
+            for(int part=0;part<2;++part){
+#pragma unroll
+                for(int mr=0;mr<NT;++mr)i4e::slm_block_store<float,16>((sid*2+part)*NT*64+mr*64,acc[part][mr]);
+            }
+            i4e::barrier();
+            if(sid<NT){
+            i4e::simd<float,16> p[16];
+#pragma unroll
+            for(int v=0;v<16;++v)p[v]=i4e::slm_block_load<float,16>(v*NT*64+sid*64)+
+                i4e::slm_block_load<float,16>((v+16)*NT*64+sid*64);
+#pragma unroll
+            for(int off=8;off;off/=2){
+#pragma unroll
+                for(int v=0;v<off;++v)p[v]+=p[v+off];
+            }
+            i4e::simd<uint32_t,16> offsets=(row+uint32_t(sid)*uint32_t(N))*4u;
+            i4e::scatter<float,16>(y,offsets,p[0],valid);
+            }
+        });
+}
+template<int KB>
+void iq4_q8_split_dispatch(int T,const uint8_t* w,const Q81Block* x,float* y,int N,sycl::queue* q){
+    switch(T){
+    case 1:iq4_q8_split_launch<1,KB>(w,x,y,N,q);break;
+    case 2:iq4_q8_split_launch<2,KB>(w,x,y,N,q);break;
+    case 3:iq4_q8_split_launch<3,KB>(w,x,y,N,q);break;
+    case 4:iq4_q8_split_launch<4,KB>(w,x,y,N,q);break;
+    }
+}
+}
+
+void launch_iq4_q8_split(int mode,const void* w,const void* x,float* y,int K,int N,int T,void* stream){
+    if(mode!=1||!w||!x||!y||!stream||N<1||T<1||T>4||(K!=2560&&K!=6144))throw std::invalid_argument("IQ4 split normal route");
+    if(K==2560)iq4_q8_split_dispatch<10>(T,(const uint8_t*)w,(const Q81Block*)x,y,N,strata::q_of(stream));
+    else iq4_q8_split_dispatch<24>(T,(const uint8_t*)w,(const Q81Block*)x,y,N,strata::q_of(stream));
+    launch_check();
 }
 
 } // namespace strata::kernels
