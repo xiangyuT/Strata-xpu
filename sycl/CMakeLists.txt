@@ -27,6 +27,20 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 add_compile_definitions(STRATA_VERSION="${PROJECT_VERSION}")
+option(STRATA_SYCL_WORKLOAD_TRACE "Build diagnostic CPU annotations and optional routing audit" OFF)
+if(STRATA_SYCL_WORKLOAD_TRACE)
+  set_property(SOURCE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/prefill.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/prefill/gemm.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/program/generate.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/verify.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/mtp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/native_mmvq.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/iq_kernels.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/qsa_decode_attn.dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/fused_gr.dp.cpp
+    APPEND PROPERTY COMPILE_DEFINITIONS STRATA_SYCL_WORKLOAD_TRACE=1)
+endif()
 
 set(STRATA_SYCL_AOT "" CACHE STRING "AOT device for the GPU code, e.g. bmg-g31 (empty: SPIR-V, JIT at run time)")
 # The device spins on host flags are bounded (include/strata/sycl_doorbell.hpp). The bound is chosen per device at run
@@ -246,6 +260,9 @@ target_link_libraries(strata PRIVATE strata_engine strata_prefill strata_spec)
 option(STRATA_SYCL_PARITY "Build the kernel parity tests" ON)
 if(STRATA_SYCL_PARITY)
   enable_testing()
+  add_executable(gemm_stride_parity src/prefill/gemm_stride_parity.cpp)
+  target_link_libraries(gemm_stride_parity PRIVATE strata_prefill)
+  add_test(NAME gemm_stride_parity COMMAND gemm_stride_parity)
   foreach(p IN ITEMS dequant_s2 s2_gemv shared_expert gr gdn s2_gemv_q8 sampler rope quantize_act router_top10
                      s_gemv elementwise bf16_gemv s_gemv_q8k qsa kv_q8 kv_stream kv_q4 cvec)
     strata_resolve(_src src/kernels/${p}_parity.cpp)

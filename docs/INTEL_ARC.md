@@ -155,6 +155,52 @@ Things that matter on an Arc (details in INTEL.md):
   `STRATA_*`, `ONEAPI_*`, `UR_*`, `IGC_*`, `SYCL_*` or `ZES_*` variable of the server's environment reach the engine
   through `strata-sycl.sh` (for example `STRATA_MIRROR_MIB`, `IGC_EnableDPEmulation`).
 
+**Fork update, 2026-10-09:** the preceding NoHost restriction describes the older port.
+With device planning and a complete pinned host mirror, this fork's NoHost path also computes mirrored experts
+on the GPU. The opt-in cache controller below uses that path.
+
+### Adapting the GPU cache with a host mirror
+
+Set `STRATA_SYCL_MIRROR_ADAPT=1` for a single-GPU `--serve` session with `--stream-experts`,
+`--no-prefill-borrow`, device planning and NoHost enabled. `--adapt-every N`, `--adapt-swaps N`
+(at most 96) and `--adapt-decay` control how completed routing counts replace cold cached experts.
+Each same-layer replacement exchanges the existing device slot and pinned mirror bytes, keeping both
+byte budgets fixed. Exchanges complete and the residency/mirror tables update before the next window.
+This mode requires every noncached expert to be mirrored; peer/remote caches, elastic cache resizing
+and profile saving are incompatible with it.
+
+### Optional SYCL decode paths
+
+These paths are opt-in; each flag defaults off. They keep the stored model weights,
+activation quantization and KV format, and use the original route outside their supported shapes.
+
+- `STRATA_SYCL_IQ3_XMX=1`: INT8 joint-matrix dot products for the supported small IQ3_S matrix shapes.
+- `STRATA_SYCL_IQ4_T4_XMX=1`: INT8 joint-matrix dot products for four-column IQ4_XS calls at the supported shapes.
+- `STRATA_SYCL_GDN_STATE_COMMIT=1`: replay the accepted recurrent-state prefix without computing the discarded output rows.
+- `STRATA_SYCL_GR_NORM_BOUNDS=1`: limit GR normalization to the stream owned by each work-group, retaining its reduction order.
+- `STRATA_SYCL_ADAPT_WINDOW_PRESENCE=1`: in the mirror cache controller, count each routed expert once per completed verify window.
+- `STRATA_SYCL_IQ4_T4_ESIMD=1`: use the ESIMD INT8 matrix path for four-column IQ4_XS calls with input width 2560 or 6144 and 64-byte-aligned weights and activations. This takes precedence over `STRATA_SYCL_IQ4_T4_XMX` on that domain.
+- `STRATA_SYCL_QSA_CHUNK_DOWN=1`: use consuming-lane reductions for INT8 KV decode attention, keeping the original lane-zero reduction order and merge.
+- `STRATA_SYCL_GR_CACHED_NORM=3`: reuse the normalized GR product and pass a compact prepared-up payload. This requires `STRATA_SYCL_GR_NORM_BOUNDS=1` and the split-normalization/sliced-down routes. Misaligned or overlapping pending outputs use the original path.
+
+The matrix paths use the experimental oneAPI joint-matrix API. Their element ownership
+was checked on BMG-G21 with oneAPI 2026.1.1; other compiler/device combinations need their own checks.
+The state-only and normalization paths also require the engine's supported recurrent/GR geometry.
+
+For window-presence heat, the existing `--adapt-every` and `--adapt-decay` options still
+control cadence and decay. Capacity, same-layer replacements and complete-mirror requirements
+remain as described above. `--adapt-every 8 --adapt-decay 1` selects a cadence of eight completed
+decode windows and accumulated heat without decay; choose the policy for your session.
+
+### Optional SYCL prompt dequantization
+
+`STRATA_SYCL_DEQUANT_GU_BOUNDED=1` selects an eight-subgroup gate/up FP16
+dequantizer for IQ2_XXS, IQ2_S and IQ1_M. It uses bounded byte offsets and maps
+adjacent lanes to adjacent output runs, retaining the original dequantization
+formulas and interleaved gate/up layout. The flag defaults off. Unsupported
+formats and outputs larger than `UINT32_MAX` bytes keep the original route;
+USM base pointers retain their full width. This path requires 32-lane subgroups.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,
