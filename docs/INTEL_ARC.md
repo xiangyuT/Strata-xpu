@@ -201,6 +201,21 @@ formulas and interleaved gate/up layout. The flag defaults off. Unsupported
 formats and outputs larger than `UINT32_MAX` bytes keep the original route;
 USM base pointers retain their full width. This path requires 32-lane subgroups.
 
+### Optional TLA FP32 prompt attention on B70
+
+This path requires an AOT `bmg-g31` build and a local SYCL TLA header checkout
+containing `include/cute/tensor.hpp` and `include/cute/atom/copy_traits_xe_2d.hpp`.
+The supported header revision is `87f6850680a580654b9ea2c80dbc01aeb36ad231`.
+Add `-DSTRATA_SYCL_TLA_ATTN=ON -DSTRATA_SYCL_TLA_DIR=/path/to/sycl-tla`
+to the SYCL CMake command, then set `STRATA_SYCL_TLA_ATTN=1` when running.
+Both the build option and runtime flag default off.
+
+The caller selects it for 32-query prompt batches with selection capacity 2051,
+FP32 queries and INT8 K/V with the existing FP16 scales, on B70 device `8086:e223`.
+It retains the existing scratch layout and FP32 accumulation order. Other shapes,
+pool formats, alignments and devices use the original path. Stored model weights,
+KV format, cache capacity and decode/MTP settings are unchanged.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,

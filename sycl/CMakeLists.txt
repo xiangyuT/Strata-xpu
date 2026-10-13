@@ -252,6 +252,31 @@ target_compile_options(strata_prefill PUBLIC -qmkl=sequential)
 target_link_options(strata_prefill PUBLIC -qmkl=sequential)
 target_link_libraries(strata_prefill PUBLIC strata_engine)
 
+# Optional TLA data movement for exact FP32 sparse prompt attention on B70.
+# A caller-provided header checkout avoids adding a download to default builds.
+option(STRATA_SYCL_TLA_ATTN "Build opt-in TLA FP32 prompt attention for B70" OFF)
+set(STRATA_SYCL_TLA_DIR "" CACHE PATH "sycl-tla checkout containing include/cute/tensor.hpp")
+if(STRATA_SYCL_TLA_ATTN)
+  if(NOT STRATA_SYCL_AOT STREQUAL "bmg-g31")
+    message(FATAL_ERROR "STRATA_SYCL_TLA_ATTN requires STRATA_SYCL_AOT=bmg-g31")
+  endif()
+  if(NOT EXISTS "${STRATA_SYCL_TLA_DIR}/include/cute/tensor.hpp" OR
+     NOT EXISTS "${STRATA_SYCL_TLA_DIR}/include/cute/atom/copy_traits_xe_2d.hpp")
+    message(FATAL_ERROR "STRATA_SYCL_TLA_DIR must name a sycl-tla header checkout")
+  endif()
+  if(NOT STRATA_ZE_LOADER)
+    message(FATAL_ERROR "STRATA_SYCL_TLA_ATTN requires Level Zero")
+  endif()
+  set(_tla_attn ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/qsa_prompt_attn_tla.dp.cpp)
+  target_sources(strata_kernels PRIVATE ${_tla_attn})
+  set_property(SOURCE ${_tla_attn} APPEND PROPERTY COMPILE_OPTIONS
+    "-isystem" "${STRATA_SYCL_TLA_DIR}/include")
+  set_property(SOURCE ${_tla_attn} APPEND PROPERTY COMPILE_DEFINITIONS
+    CUTLASS_ENABLE_SYCL SYCL_INTEL_TARGET CUTLASS_ENABLE_HEADERS_ONLY)
+  target_compile_definitions(strata_prefill PRIVATE STRATA_SYCL_TLA_ATTN=1)
+endif()
+
+
 strata_resolve(_main src/program/generate.cpp)
 add_executable(strata ${_main})
 target_link_libraries(strata PRIVATE strata_engine strata_prefill strata_spec)
