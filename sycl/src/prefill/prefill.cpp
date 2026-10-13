@@ -34,6 +34,9 @@
 #include "strata/kernels/verify_kernels.hpp"
 #include "strata/kernels/qsa_decode_attn.hpp"
 #include "strata/kernels/qsa_prompt_attn.hpp"
+#ifdef STRATA_SYCL_TLA_ATTN
+#include "strata/kernels/qsa_prompt_attn_tla.hpp"
+#endif
 #include "strata/kernels/qsa_select.hpp"
 #include "strata/prefill/gemm.hpp"
 #include "strata/prefill/moe_fused.hpp"
@@ -3204,6 +3207,13 @@ bool Prefill::run_impl(const int64_t *tokens, int64_t n, int64_t pos0,
                                                                             m.attn, T, m.cs))
                         for (int64_t t0 = 0; t0 < T; t0 += m.attn_batch) {
                             const int64_t nb = std::min(m.attn_batch, T - t0);
+#ifdef STRATA_SYCL_TLA_ATTN
+                            static const bool tla_attn = [] { const char* v=std::getenv("STRATA_SYCL_TLA_ATTN"); return v&&v[0]=='1'; }();
+                            if (tla_attn && nb == 32 && m.cap == 2051 &&
+                                strata::kernels::qsa_prompt_attn_tla_batch(m.q + t0 * ZV, pools, m.sel_ids + t0 * m.cap,
+                                    m.steps_dev + t0 * strata::kernels::kStepCount, m.cap, s, m.attn_scratch,
+                                    m.attn + t0 * ZV, nb, m.cs)) continue;
+#endif
                             strata::kernels::qsa_decode_attn_batch(m.q + t0 * ZV, pools, m.sel_ids + t0 * m.cap,
                                                                    m.steps_dev + t0 * strata::kernels::kStepCount, m.cap,
                                                                    s, m.attn_scratch, m.attn + t0 * ZV, nb, m.cs);
