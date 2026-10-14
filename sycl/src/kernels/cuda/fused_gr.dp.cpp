@@ -8,6 +8,7 @@
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <dpct/dpct.hpp>
 #include "strata/sycl_queue.hpp"
+#include "strata/b70.hpp"
 #include "strata/core/emulate.hpp"
 #include "strata/kernels/fused_gr.hpp"
 #include "strata/kernels/bf16_bits.hpp"
@@ -62,10 +63,6 @@ __dpct_inline__ float warp_sum(float v) {
     return v;
 }
 
-int g_gr_cached_norm_mode=[](){
-    const char* e=std::getenv("STRATA_SYCL_GR_CACHED_NORM");
-    return e&&std::atoi(e)==3?3:0;
-}();
 bool gr_overlap(const void* a,size_t as,const void* b,size_t bs){
     if(!a||!b||!as||!bs)return false;
     const uintptr_t av=reinterpret_cast<uintptr_t>(a),bv=reinterpret_cast<uintptr_t>(b);
@@ -524,10 +521,6 @@ __dpct_inline__ void gr_norm_cached_write_kernel(GrMulti m) {
         *reinterpret_cast<sycl::float4*>(xn + i) = sycl::float4(x.x() * rs, x.y() * rs, x.z() * rs, x.w() * rs);
     }
 }
-const bool g_gr_norm_direct_bounds = [] {
-    const char* value = std::getenv("STRATA_SYCL_GR_NORM_BOUNDS");
-    return value && value[0] == '1';
-}();
 
 bool gr_norm_split() {   // default; STRATA_GR_NORM_SPLIT=0: one work-group per token
     static const bool v = std::getenv("STRATA_GR_NORM_SPLIT") == nullptr || std::atoi(std::getenv("STRATA_GR_NORM_SPLIT")) != 0;
@@ -2137,7 +2130,8 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
 
         return false;   // SYCL port: never writes the q8_1 images (STRATA_QFUSE is not supported here)
     }
-    const bool cached_norm=g_gr_cached_norm_mode>0&&g_gr_norm_direct_bounds&&gr_norm_split()&&
+    const bool b70 = n_tok <= 6 && strata::is_b70(st);
+    const bool cached_norm=b70&&gr_norm_split()&&
         gr_down_sliced()&&gr_cached_norm_safe(a,n_tok,xn_scratch);
     m.part = down_partials(st);
     {
@@ -2148,7 +2142,7 @@ bool fused_gr_read_multi(const FusedGrArgs* a, int n_tok, float* xn_scratch, voi
             st->parallel_for<dpct_kernel_name<class gr_norm_cached_write>>(
                 sycl::nd_range<3>(sycl::range(1,1,n_tok*HC)*sycl::range(1,1,THREADS),sycl::range(1,1,THREADS)),
                 [=](sycl::nd_item<3>)[[sycl::reqd_sub_group_size(32)]]{gr_norm_cached_write_kernel(m);});
-        else if (g_gr_norm_direct_bounds && gr_norm_split())
+        else if (b70 && gr_norm_split())
             st->parallel_for<dpct_kernel_name<class gr_norm_bounds_k>>(
                 sycl::nd_range<3>(sycl::range(1, 1, n_tok * HC) * sycl::range(1, 1, THREADS), sycl::range(1, 1, THREADS)),
                 [=](sycl::nd_item<3>) [[sycl::reqd_sub_group_size(32)]] { gr_norm_bounds_port_kernel(m); });
