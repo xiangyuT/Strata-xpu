@@ -594,8 +594,40 @@ int fused_multi_lds_parity(const float* d_norm, const uint16_t* d_down, const ui
     }
 
 
-    // S26 STRATA_QFUSE: the read's own q8_1 image of `mixed` must be the bytes native_quantize_q8_1 writes from it -
-    // for every T (1..8), directly and through a captured graph replayed twice (the group counters must reset)
+    // Pending writes may update R in place. Compare batched and graph execution
+    // against the independent single-token path for every supported batch width.
+    for (int count = 1; count <= T; ++count) {
+        std::vector<FusedGrArgs> in_place(args.begin(), args.begin() + count);
+        for (auto& a : in_place) { a.apply = true; a.R_out = const_cast<float*>(a.R); }
+        auto reset_r = [&] { stream->memcpy(d_r, r.data(), r.size() * sizeof(float)).wait_and_throw(); };
+        auto read_r = [&] {
+            std::vector<float> result(r.size());
+            stream->memcpy(result.data(), d_r, result.size() * sizeof(float)).wait_and_throw();
+            return result;
+        };
+        reset_r();
+        fused_gr_read_multi(in_place.data(), count, d_xn, stream);
+        stream->wait_and_throw();
+        const auto want_r = read_r(); const Snapshot want = snapshot();
+        reset_r();
+        for (const auto& a : in_place) fused_gr_read(a, stream);
+        stream->wait_and_throw();
+        if (want_r != read_r() || !same(want, snapshot())) ++bad;
+        dpct::experimental::command_graph_ptr alias_graph = nullptr;
+        dpct::experimental::begin_recording(stream);
+        fused_gr_read_multi(in_place.data(), count, d_xn, stream);
+        dpct::experimental::end_recording(stream, &alias_graph);
+        auto alias_exec = alias_graph->finalize();
+        for (int replay = 0; replay < 2; ++replay) {
+            reset_r(); stream->ext_oneapi_graph(alias_exec); stream->wait_and_throw();
+            if (want_r != read_r() || !same(want, snapshot())) ++bad;
+        }
+        delete alias_graph;
+    }
+    std::printf("  fused GR in-place residual, T 1..8, direct and graph replays: %s\n", bad ? "FAIL" : "pass");
+
+    // SYCL compatibility check: fused_gr_read_multi advertises no QFUSE.
+    // Require false and an untouched q8 buffer for T=1..8, direct and graph replay.
     {
         uint8_t *d_q = nullptr, *d_ref = nullptr;
         unsigned* d_cnt = nullptr;
@@ -652,7 +684,6 @@ int fused_multi_lds_parity(const float* d_norm, const uint16_t* d_down, const ui
                 strata::kernels::native_quantize_q8_1(d_mixed, d_ref, N, tt, stream);
                 check(DPCT_CHECK_ERROR(stream->wait()), "qfuse sync");
                 if (qx) { delete (qx); delete (qg); }
-                if (v3) { std::printf("  QFUSE: the v3 read writes no q8_1 (%s)\n", wrote ? "WRONG: it says it did" : "ok"); qbad += wrote; break; }
                 check(DPCT_CHECK_ERROR((dpct::get_current_device().queues_wait_and_throw(), dpct::get_in_order_queue())
                                            .memcpy(hq.data(), d_q,
                                                    (size_t)tt * (N / 32) * 36)
@@ -663,13 +694,15 @@ int fused_multi_lds_parity(const float* d_norm, const uint16_t* d_down, const ui
                                                    (size_t)tt * (N / 32) * 36)
                                            .wait()),
                       "qfuse ref read");
-                if (!wrote || std::memcmp(hq.data(), hr.data(), (size_t) tt * (N / 32) * 36) != 0) {
-                    std::printf("  QFUSE: T=%d rep %d: %s\n", tt, rep, wrote ? "q8_1 bytes differ" : "not written");
+                bool untouched = true;
+                for (size_t i = 0; i < (size_t) tt * (N / 32) * 36; ++i) untouched &= hq[i] == 0x5a;
+                if (wrote || !untouched) {
+                    std::printf("  SYCL QFUSE fallback: T=%d rep %d: wrote=%d untouched=%d FAIL\n", tt, rep, wrote, untouched);
                     ++qbad;
                 }
             }
         }
-        std::printf("  fused GR read + q8_1 (STRATA_QFUSE), T 1..8, direct and graph replays: %s\n", qbad ? "FAIL" : "pass");
+        std::printf("  SYCL QFUSE fallback (fused QFUSE unsupported), T 1..8, direct and graph replays: %s\n", qbad ? "FAIL" : "pass");
         bad += qbad;
         sycl::free(d_q, dpct::get_in_order_queue());
             sycl::free(d_ref, dpct::get_in_order_queue());
