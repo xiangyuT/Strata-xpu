@@ -161,6 +161,20 @@ Things that matter on an Arc (details in INTEL.md):
   `STRATA_*`, `ONEAPI_*`, `UR_*`, `IGC_*`, `SYCL_*` or `ZES_*` variable of the server's environment reach the engine
   through `strata-sycl.sh` (for example `STRATA_MIRROR_MIB`, `IGC_EnableDPEmulation`).
 
+## Optional cached GR normalization
+
+```sh
+export STRATA_SYCL_GR_NORM_BOUNDS=1
+export STRATA_SYCL_GR_CACHED_NORM=3
+```
+
+This path visits each stream's normalization range once, keeps the normalized
+product for the up projection, and prepares the low-rank activation once in the
+down reduction. It uses the split-normalization and sliced-down paths. The
+cached path checks output alignment and overlapping buffers before dispatch;
+unsupported layouts retain the existing computation. Mode 3 includes the compact
+up kernel. Both switches default to off.
+
 ## Windows
 
 There is no Windows path yet. `setup --backend sycl` on Windows stops and points here. oneAPI exists for Windows,
