@@ -3077,7 +3077,7 @@ bool g_no_sub16_gu = env_on("STRATA_NO_SUB16_GU");
 bool q2_word_expand_enabled(const sycl::device& device) {
     static const bool enabled = [] {
         const char* v = std::getenv("STRATA_SYCL_Q2_WORD_EXPAND");
-        return !(v && v[0] == '0');
+        return v && v[0] == '1';
     }();
     if (!enabled) return false;
     thread_local std::optional<std::pair<sycl::device, bool>> cached;
