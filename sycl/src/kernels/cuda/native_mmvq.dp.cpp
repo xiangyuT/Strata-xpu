@@ -3676,15 +3676,15 @@ void native_iq4_xs_mmvq(const void* weights, const void* x_q8_1, float* y,
 
     static const bool pair_reuse = [] {
         const char* v = std::getenv("STRATA_SYCL_IQ4_PAIR_REUSE");
-        return !v || v[0] == '1';
+        return v && v[0] == '1';
     }();
     static const bool split = [] {
         const char* v = std::getenv("STRATA_SYCL_IQ4_Q8_SPLIT");
-        return !v || v[0] == '1';
+        return v && v[0] == '1';
     }();
     static const bool use_bit_select = [] {
         const char* v = std::getenv("STRATA_SYCL_IQ4_LOOKUP");
-        return !v || std::atoi(v) != 0;
+        return v && std::atoi(v) != 0;
     }();
     const bool bmg = ncols >= 1 && ncols <= 6 &&
         strata::intel_gpu_gen(strata::q_of(stream)->get_device()) == strata::IntelGpuGen::Battlemage;
