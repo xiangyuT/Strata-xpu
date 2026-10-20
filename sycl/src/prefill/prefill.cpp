@@ -4080,7 +4080,7 @@ bool Prefill::run_impl(const int64_t *tokens, int64_t n, int64_t pos0,
                         StagerDone stager_done{stream_all ? nullptr : m.stager.get()};
                         static const bool f16_pair_env = [] {
                             const char* v = std::getenv("STRATA_SYCL_F16_EXPERT_PAIR");
-                            return !v || v[0] == '1';
+                            return v && (v[0] == '1');
                         }();
                         const bool f16_pairs = f16_pair_env &&
                             strata::intel_gpu_gen(m.cs->get_device()) == strata::IntelGpuGen::Battlemage &&

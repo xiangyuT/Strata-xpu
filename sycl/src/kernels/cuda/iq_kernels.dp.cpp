@@ -4804,7 +4804,7 @@ bool iq_dequant_gu_f16_bounded(int type, const void* gate, const void* up,
         uint64_t(n_ff) > UINT32_MAX / (uint64_t(n_embd) * 4u)) return false;
     static const bool metadata = [] {
         const char* v = std::getenv("STRATA_SYCL_GU16_METADATA_QUARTET");
-        return !v || v[0] == '1';
+        return v && (v[0] == '1');
     }();
     if (type == 16 && metadata) launch_dequant_gu_bounded<16, true>(gate, up, n_ff, n_embd, dst, stream);
     else if (type == 16) launch_dequant_gu_bounded<16>(gate, up, n_ff, n_embd, dst, stream);
@@ -4820,7 +4820,7 @@ void iq_dequant_gu_f16(int t, const void* gate, const void* up, int64_t n_ff, in
     if (n_embd % 256 != 0 || !is_iq(t) || tail != nullptr) { std::fprintf(stderr, "iq_dequant_gu_f16: type %d / %lld\n", t, (long long) n_embd); std::exit(1); }
     static const bool bounded = [] {
         const char* v = std::getenv("STRATA_SYCL_DEQUANT_GU_BOUNDED");
-        return !v || (v[0] != '\0' && v[0] != '0');
+        return v && ((v[0] != '\0' && v[0] != '0'));
     }();
     if (bounded && strata::intel_gpu_gen(strata::q_of(stream)->get_device()) == strata::IntelGpuGen::Battlemage &&
         iq_dequant_gu_f16_bounded(t, gate, up, n_ff, n_embd, dst, stream)) return;
