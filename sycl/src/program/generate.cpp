@@ -5018,7 +5018,7 @@ int main(int argc, char **argv) try {
         // Unsupported configurations retain the existing adaptation/fallback behavior.
         const char* mirror_adapt_env = std::getenv("STRATA_SYCL_MIRROR_ADAPT");
         const char* device_plan = std::getenv("STRATA_VERIFY_DEVICE_PLAN");
-        mirror_adapt = (!mirror_adapt_env || mirror_adapt_env[0] == '1') &&
+        mirror_adapt = (mirror_adapt_env && mirror_adapt_env[0] == '1') &&
             no_host && device_plan && std::atoi(device_plan) != 0 &&
             strata::intel_gpu_gen(strata::q_of(nullptr)->get_device()) == strata::IntelGpuGen::Battlemage && o.serve && o.batch == 0 && o.stream_experts && srcp == &gguf_src &&
             stages.empty() && o.peer_device < 0 && !remote_caches && o.no_prefill_borrow &&
