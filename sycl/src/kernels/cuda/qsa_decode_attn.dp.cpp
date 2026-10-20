@@ -652,7 +652,7 @@ static void launch_qsa_chunk_down(int,const float*,const QsaAttnPools&,const int
 bool qsa_chunk_down_supported(int64_t cap, int64_t n_q, const QsaShapes& s, void* stream) {
     static const bool enabled = [] {
         const char* v = std::getenv("STRATA_SYCL_QSA_CHUNK_DOWN");
-        return !v || v[0] == '1';
+        return v && (v[0] == '1');
     }();
     const bool batch = n_q >= 1 && n_q <= 6;
     const bool shape = (cap == 2051 && (batch || n_q == 32)) || (cap == 32768 && batch);
@@ -1416,7 +1416,7 @@ static void launch_qsa_chunk_down(int mode,const float* q,const QsaAttnPools& po
     if(nq<=0)return;
     static const bool vector_enabled = [] {
         const char* v = std::getenv("STRATA_SYCL_QSA_VALUE8_K8_VEC");
-        return !v || v[0] == '1';
+        return v && (v[0] == '1');
     }();
     const bool vector_shape=(cap==2051&&(nq==1||nq==2||nq==3||nq==4||nq==32))||(cap==32768&&nq==1);
     if(vector_enabled&&vector_shape){launch_normal_qsa_vector(1,q,pools,ids,steps,cap,s,scratch,attn,nq,stream);return;}
