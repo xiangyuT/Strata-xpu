@@ -37,6 +37,18 @@ std::vector<double> per_layer(const GgufFile& f, const char* suffix, size_t n) {
     return out;
 }
 std::vector<uint64_t> integers(const GgufFile& f, const char* suffix) { return f.integer_array(key(suffix)); }
+uint64_t integer_alias(const GgufFile& f, const char* primary, const char* alias, bool zero = false) {
+    if (!f.get(key(primary))) return integer(f,alias,zero);
+    const auto value = integer(f,primary,zero);
+    if (f.get(key(alias)) && integer(f,alias,zero) != value) fail("conflicting " + key(primary) + " / " + key(alias));
+    return value;
+}
+std::vector<uint64_t> integers_alias(const GgufFile& f, const char* primary, const char* alias) {
+    if (!f.get(key(primary))) return integers(f,alias);
+    auto value = integers(f,primary);
+    if (f.get(key(alias)) && integers(f,alias) != value) fail("conflicting " + key(primary) + " / " + key(alias));
+    return value;
+}
 void count(size_t actual, size_t expected, const char* what) {
     if (actual != expected) fail(std::string(what) + " length " + std::to_string(actual) +
                                  ", expected " + std::to_string(expected));
@@ -103,12 +115,26 @@ Config Config::read(const GgufFile& f) {
     c.clamp_expert = per_layer(f, "swiglu_clamp_exp", c.layers);
     c.clamp_shared = f.get(key("swiglu_clamp_shexp")) ? per_layer(f, "swiglu_clamp_shexp", c.layers) : c.clamp_expert;
     auto& e = c.engram;
-    e.heads = (int) integer(f, "engram.head_count"); e.head_dim = (int) integer(f, "engram.key_length");
-    e.max_ngram = (int) integer(f, "engram.max_ngram_size"); e.pad_id = integer(f, "engram.pad_id", true);
+    const bool global = f.get(key("ple.layers")) != nullptr;
+    e.heads = (int) integer(f, global ? "ple.heads_per_ngram" : "engram.head_count");
+    e.head_dim = (int) (global ? integer(f,"embedding_length_per_layer_input") : integer_alias(f, "engram.key_length", "engram.head_dim"));
+    e.max_ngram = (int) integer(f, global ? "ple.ngram_size" : "engram.max_ngram_size");
+    e.pad_id = integer_alias(f, "engram.pad_id", "engram.pad_token_id", true);
     if (e.heads > 1024 || e.max_ngram < 2 || e.max_ngram > 128) fail("invalid Engram bucket geometry");
-    e.layers = integers(f, "engram.layer_ids"); e.multipliers = integers(f, "engram.multipliers");
-    e.primes = integers(f, "engram.primes"); e.offsets = integers(f, "engram.offsets");
+    e.layers = global ? integers(f,"ple.layers") : integers_alias(f, "engram.layer_ids", "engram.layers");
+    e.multipliers = integers(f,global ? "ple.layer_multipliers" : "engram.multipliers");
+    e.primes = integers(f,global ? "ple.head_vocab_sizes" : "engram.primes");
+    e.offsets = integers(f,global ? "ple.head_offsets" : "engram.offsets");
     e.token_map = integers(f, "engram.token_map");
+    if (global) {
+        // PLE pad_token_id names a vocabulary token; hashes use its mapped ID.
+        if (e.pad_id >= e.token_map.size()) fail("Engram pad token is outside the vocabulary");
+        e.pad_id=e.token_map[e.pad_id];
+        for (const char* old : {"engram.head_count","engram.key_length","engram.head_dim",
+                               "engram.max_ngram_size","engram.layer_ids","engram.layers",
+                               "engram.multipliers","engram.primes","engram.offsets"})
+            if (f.get(key(old))) fail("mixed PLE and legacy Engram metadata");
+    }
     if (e.layers.empty() || e.layers.size() > size_t(c.layers)) fail("invalid Engram layer count");
     count(e.multipliers.size(), e.layers.size()*size_t(e.max_ngram), "Engram multipliers");
     count(e.primes.size(), e.layers.size()*e.buckets(), "Engram primes");
@@ -119,17 +145,58 @@ Config Config::read(const GgufFile& f) {
         if (!e.primes[i] || e.offsets[i] >= uint64_t(INT32_MAX) || e.primes[i] > uint64_t(INT32_MAX) - e.offsets[i])
             fail("Engram bucket exceeds int32 row range");
     if (uint64_t(e.head_dim)*e.buckets() > uint64_t(INT32_MAX)) fail("Engram projection dimension overflows");
+    if (global) {
+        for (size_t l=0;l<e.layers.size();++l) {
+            auto first=e.offsets.begin()+l*e.buckets(), last=first+e.buckets();
+            const uint64_t base=*std::min_element(first,last);
+            e.table_offsets.push_back(base);
+            for (auto it=first;it!=last;++it) *it-=base;
+        }
+    }
     return c;
 }
 
-Model::Model(const std::string& any_shard) : gguf_(gguf_split_paths(any_shard)), config_(Config::read(gguf_.meta())) { validate(); }
+Model::Model(const std::string& any_shard) : gguf_(gguf_split_paths(any_shard)), config_(Config::read(gguf_.meta())) { make_engram_views(); validate(); }
 
 TensorRef Model::tensor(const std::string& name) const {
     size_t shard = 0;
     const auto* t = gguf_.find(name, &shard);
-    if (!t) fail("missing tensor " + name);
-    if (!gguf_.in_bounds(*t, shard)) fail("truncated/unsupported tensor " + name);
-    return {&gguf_.shard(shard), t};
+    const auto view=engram_views_.find(name);
+    if (!t && view==engram_views_.end()) fail("missing tensor " + name);
+    const TensorRef ref=t ? TensorRef{&gguf_.shard(shard),t} : TensorRef{view->second.file,&view->second.tensor};
+    const uint64_t bytes = ref.bytes(), payload = ref.file->file_size()-ref.file->data_start();
+    if (!bytes || ref.tensor->offset > payload || bytes > payload-ref.tensor->offset) fail("truncated/unsupported tensor " + name);
+    return ref;
+}
+
+
+void Model::make_engram_views() {
+    const auto& e=config_.engram;
+    if (e.table_offsets.empty()) return;
+    const auto source=tensor("per_layer_token_embd.weight");
+    if (source.tensor->shape.size()!=2 || source.tensor->shape[0]!=uint64_t(e.head_dim))
+        fail("invalid global Engram table shape");
+    const uint64_t stride=engram_row_bytes(source.tensor->type,e.head_dim);
+    if (!stride) fail("unsupported global Engram table type");
+    std::vector<std::pair<uint64_t,uint64_t>> spans;
+    for (size_t l=0;l<e.layers.size();++l) {
+        uint64_t rows=0;
+        for (size_t k=0;k<e.buckets();++k) {
+            const size_t i=l*e.buckets()+k;
+            rows=std::max(rows,e.offsets[i]+e.primes[i]);
+        }
+        const uint64_t base=e.table_offsets[l];
+        if (base>source.tensor->shape[1] || rows>source.tensor->shape[1]-base ||
+            base>UINT64_MAX/stride || source.tensor->offset>UINT64_MAX-base*stride)
+            fail("Engram view exceeds global table");
+        const auto name=block(int(e.layers[l]))+"engram_embd.weight";
+        if (gguf_.find(name)) fail("mixed global and per-layer Engram tables");
+        auto t=*source.tensor;t.name=name;t.shape[1]=rows;t.offset+=base*stride;
+        engram_views_.emplace(name,View{source.file,std::move(t)});
+        spans.emplace_back(base,base+rows);
+    }
+    std::sort(spans.begin(),spans.end());
+    for(size_t i=1;i<spans.size();++i)if(spans[i].first<spans[i-1].second)fail("overlapping Engram layer views");
 }
 
 void Model::require(const std::string& name, const std::vector<uint64_t>& shape, int group,
@@ -137,8 +204,12 @@ void Model::require(const std::string& name, const std::vector<uint64_t>& shape,
     const auto ref = tensor(name);
     if (ref.tensor->shape != shape && (alternative.empty() || ref.tensor->shape != alternative)) fail("wrong shape: " + name);
     const auto type = ref.tensor->type;
-    if (type != 0 && type != 1 && type != 8 && type != 12 && type != 14 && type != 30)
+    if (type != 0 && type != 1 && type != 8 && type != 12 && type != 13 && type != 14 && type != 30 &&
+        !(group == 1 && (type == 16 || type == 17 || type == 19 || type == 22 || type == 29 || type == 39)) &&
+        !(group == 2 && (type == 20 || type == fp8_engram_type || type == mxfp8_engram_type)))
         fail("unsupported type " + std::string(ref.tensor->type_name()) + ": " + name);
+    // The physical global table is counted/validated once, not once per view.
+    if (engram_views_.count(name)) return;
     if (!checked_.insert(name).second) fail("duplicate layout entry " + name);
     auto& bytes = group == 1 ? routed_bytes_ : (group == 2 ? engram_bytes_ : dense_bytes_);
     if (ref.bytes() > UINT64_MAX - bytes) fail("tensor byte count overflow");
@@ -147,6 +218,10 @@ void Model::require(const std::string& name, const std::vector<uint64_t>& shape,
 
 void Model::validate() {
     const auto& c = config_;
+    if (!c.engram.table_offsets.empty()) {
+        const auto t=tensor("per_layer_token_embd.weight");
+        require("per_layer_token_embd.weight",t.tensor->shape,2);
+    }
     const uint64_t H = c.hidden, V = c.vocab, A = c.heads, D = c.head_dim, Q = c.q_rank;
     const uint64_t G = c.o_groups, R = c.o_rank, HC = c.hc, E = c.experts, F = c.expert_ff;
     const uint64_t I = c.index_dim, N = c.index_heads, C = HC*(HC+2);
@@ -208,8 +283,17 @@ void Model::validate() {
             }
             if (max_row > table.tensor->shape[1]) fail(b+"Engram buckets exceed table rows");
             require(b+"engram_embd.weight",table.tensor->shape,2);
-            need("engram_wkv.weight",{ec.buckets()*uint64_t(ec.head_dim),H*(HC+1)});
-            need("engram_q.weight",{H,HC}); need("engram_k.weight",{H,HC});
+            const bool wkv = has("engram_wkv.weight"), kv = has("engram_kv.weight");
+            if (wkv == kv) fail(b+"requires exactly one Engram KV projection");
+            s.engram_projection = b+(wkv ? "engram_wkv.weight" : "engram_kv.weight");
+            require(s.engram_projection,{ec.buckets()*uint64_t(ec.head_dim),H*(HC+1)});
+            s.engram_fused_gate = has("engram_gate.weight");
+            if (s.engram_fused_gate) {
+                if (has("engram_q.weight") || has("engram_k.weight")) fail(b+"mixed fused and separate Engram gates");
+                need("engram_gate.weight",{H,HC});
+            } else {
+                need("engram_q.weight",{H,HC}); need("engram_k.weight",{H,HC});
+            }
         }
     }
     for (size_t shard = 0; shard < gguf_.size(); ++shard)

@@ -1,0 +1,34 @@
+{
+  "exe": "build-sycl/strata-deepseek41",
+  "cwd": ".",
+  "arch": "deepseek41",
+  "model_name": "DeepSeek-V4.1-Flash-1017",
+  "tokenizer": "pack/deepseek41/tokenizer",
+  "log": "logs/deepseek41-sycl-engine.log",
+  "args": [
+    "generate",
+    "--native",
+    "/models/DeepSeek-V4.1-Flash-1017-UD-IQ1_M-00001-of-00005.gguf",
+    "--tp", "1",
+    "--ctx", "2048",
+    "--prefill-batch", "128",
+    "--expert-cache-mib", "15360",
+    "--dspark", "/models/dspark-DeepSeek-V4.1-Flash-1017-Q8_0.gguf",
+    "--draft-depth", "5"
+  ],
+  "fit_max_tokens": false,
+  "env": {
+    "STRATA_DS41_DSPARK_P_MIN": "0.75",
+    "STRATA_DS41_SYCL_DSPARK_TUNING": "17"
+  },
+  "sampling": {
+    "temperature": 0,
+    "top_p": 1,
+    "top_k": 64,
+    "min_p": 0,
+    "repetition_penalty": 1,
+    "presence_penalty": 0,
+    "frequency_penalty": 0,
+    "penalty_last_n": 0
+  }
+}

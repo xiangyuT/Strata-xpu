@@ -115,6 +115,35 @@ target_include_directories(strata_includes INTERFACE
   ${STRATA_ROOT}/include)
 target_compile_options(strata_includes INTERFACE -Wall -Wextra)
 
+# Experimental native family, separate from the existing strata executable.
+option(STRATA_DEEPSEEK41 "Build experimental single-GPU DeepSeek native driver" OFF)
+option(STRATA_DEEPSEEK41_OPERATORS "Build experimental DeepSeek artifact and MXFP4 operator checks (no inference engine)" OFF)
+if(STRATA_DEEPSEEK41 OR STRATA_DEEPSEEK41_OPERATORS)
+  add_library(strata_deepseek41_artifact STATIC ${STRATA_ROOT}/src/deepseek41/model.cpp)
+  target_link_libraries(strata_deepseek41_artifact PUBLIC strata_includes)
+  add_executable(strata-deepseek41-inspect ${STRATA_ROOT}/src/deepseek41/inspect.cpp)
+  target_link_libraries(strata-deepseek41-inspect PRIVATE strata_deepseek41_artifact)
+  find_package(Threads REQUIRED)
+  add_library(strata_deepseek41_mxfp4 STATIC src/deepseek41/mxfp4.dp.cpp src/deepseek41/gemm.dp.cpp src/deepseek41/expert_host.cpp)
+  target_link_libraries(strata_deepseek41_mxfp4 PUBLIC strata_includes Threads::Threads)
+  target_include_directories(strata_deepseek41_mxfp4 PRIVATE ${STRATA_ROOT}/third_party/ggml)
+  add_library(strata_deepseek41_operators STATIC src/deepseek41/kernels.dp.cpp)
+  target_link_libraries(strata_deepseek41_operators PUBLIC strata_deepseek41_mxfp4)
+  add_executable(deepseek41_operators_parity src/deepseek41/operators_parity.cpp)
+  target_link_libraries(deepseek41_operators_parity PRIVATE strata_deepseek41_operators)
+  add_executable(deepseek41_engram_test ${STRATA_ROOT}/tests/core/deepseek41_engram_test.cpp)
+  target_link_libraries(deepseek41_engram_test PRIVATE strata_deepseek41_artifact)
+  enable_testing()
+  add_test(NAME deepseek41_engram_test COMMAND deepseek41_engram_test)
+  if(STRATA_DEEPSEEK41)
+    add_executable(strata-deepseek41 ${STRATA_ROOT}/src/deepseek41/main.cpp
+      src/deepseek41/engine.cpp src/deepseek41/resident.cpp src/deepseek41/expert_cache.cpp)
+    target_link_libraries(strata-deepseek41 PRIVATE strata_deepseek41_artifact
+      strata_deepseek41_operators strata_kernels)
+    target_include_directories(strata-deepseek41 PRIVATE ${STRATA_ROOT}/third_party/ggml)
+  endif()
+endif()
+
 # --- CPU-side pieces, identical to the top-level build ------------------------------------------------------------
 strata_resolve(_spec src/spec/suffix_drafter.cpp src/spec/controller.cpp src/spec/draft_policy.cpp
                     src/spec/draft_source.cpp)

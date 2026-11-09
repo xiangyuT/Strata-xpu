@@ -101,6 +101,8 @@ inline const char* ggml_type_name(uint32_t t) {
         return "IQ4_XS";
     case 24:
         return "I8";
+    case 29:
+        return "IQ1_M";
     case 30:
         return "BF16";
     case 34:
@@ -197,6 +199,10 @@ inline bool block_geometry(uint32_t t, int& elems, int& bytes) {
     case 18:
         elems = 256;
         bytes = 98;
+        return true;
+    case 19:   // IQ1_S: fp16 scale, 32 grid bytes and eight uint16 metadata words
+        elems = 256;
+        bytes = 50;
         return true;
     case 20:
         elems = 32;

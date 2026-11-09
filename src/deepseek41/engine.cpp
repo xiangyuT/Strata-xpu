@@ -220,6 +220,15 @@ public:
     Engine(const std::string& path,int ctx,int threads,int gpu_count,int cache_mib,int depth) : model(path),c(model.config()),cpu(threads),
         attention_parts(size_t(c.hidden)*gpu_count*Batch,tp_graph ? cudaHostAllocMapped|cudaHostAllocPortable : 0),transfer(size_t(c.hidden)*Batch),cpu_parts(size_t(c.hidden)*c.top_k*Batch,direct_ffn ? cudaHostAllocMapped|cudaHostAllocPortable : 0),activation(size_t(c.hidden)*Batch,route_handoff ? cudaHostAllocMapped|cudaHostAllocPortable : 0),hc_transfer(size_t(c.hidden*4+4)*Batch),tp_sum(size_t(c.hidden)*Batch),route_ids(c.top_k*Batch,route_handoff ? cudaHostAllocMapped|cudaHostAllocPortable : 0),picked(Batch),
         group_ptr(c.top_k*Batch),group_start(c.top_k*Batch+1),group_dst(c.top_k*Batch),group_tok(c.top_k*Batch),group_count(1),context(ctx),window_routes(c.layers) {
+        // Artifact inspection accepts the new PLE/IQ schema, whose compute
+        // paths are currently implemented only by the separate SYCL driver.
+        if (!c.engram.table_offsets.empty())
+            throw std::runtime_error("global PLE models currently require the SYCL DeepSeek driver");
+        for (int l=0;l<c.layers;++l) for (const char* n : {"ffn_gate_exps.weight","ffn_up_exps.weight","ffn_down_exps.weight"}) {
+            const auto type=model.tensor(block(l)+n).tensor->type;
+            if (type==16 || type==17 || type==19 || type==22 || type==29)
+                throw std::runtime_error("IQ routed experts currently require the SYCL DeepSeek driver");
+        }
         if (c.hc != 4 || c.index_heads > 32 || c.experts > 512 || c.heads%gpu_count || c.o_groups%gpu_count ||
             ctx < c.sliding_window || ctx > c.context_train) throw std::runtime_error("unsupported native DeepSeek geometry/context");
         if(direct_ffn && c.top_k*Batch>FfnPlan::Capacity) throw std::runtime_error("native FFN packet capacity");
@@ -559,8 +568,8 @@ public:
         for (int t = 0; t < tokens; ++t) {
             const auto ids = engram_rows(c.engram,size_t(eg),inputs[t],local_history); local_history.push_back(inputs[t]);
             for (size_t j = 0; j < ids.size(); ++j) {
-                if (table.tensor->type != 12 || c.engram.head_dim%256) throw std::runtime_error("Engram table must be original Q4_K");
-                for (int b = 0; b < c.engram.head_dim/256; ++b) dequantize_q4_K(data+size_t(ids[j])*row_bytes+size_t(b)*144,engram_input.data()+size_t(t)*width+j*c.engram.head_dim+b*256);
+                dequantize_engram_row(table.tensor->type,data+size_t(ids[j])*row_bytes,c.engram.head_dim,
+                    engram_input.data()+size_t(t)*width+j*c.engram.head_dim);
             }
         }
         for (auto& rp : ranks) {

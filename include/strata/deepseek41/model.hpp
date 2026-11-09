@@ -2,8 +2,10 @@
 #pragma once
 
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/deepseek41/engram.hpp"
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -14,6 +16,8 @@ struct EngramConfig {
     int heads = 0, head_dim = 0, max_ngram = 0;
     uint64_t pad_id = 0;
     std::vector<uint64_t> layers, multipliers, primes, offsets, token_map;
+    // Global PLE table row origins; empty for the legacy per-layer tables.
+    std::vector<uint64_t> table_offsets;
     size_t buckets() const { return size_t(heads) * size_t(max_ngram - 1); }
 };
 
@@ -36,13 +40,20 @@ struct Config {
 struct LayerStreams {
     int kv_source = -1, key_source = -1, top_k_source = -1, engram_index = -1;
     bool publishes_kv = false, publishes_keys = false, publishes_top_k = false;
+    std::string engram_projection;
+    bool engram_fused_gate = false;
 };
 
 struct TensorRef {
     const GgufFile* file = nullptr;
     const TensorInfo* tensor = nullptr;
     const uint8_t* data() const { return file->tensor_data(*tensor); }
-    uint64_t bytes() const { return tensor_payload_bytes(*tensor); }
+    uint64_t bytes() const {
+        if (tensor->type != fp8_engram_type && tensor->type != mxfp8_engram_type) return tensor_payload_bytes(*tensor);
+        if ((!tensor->name.ends_with(".engram_embd.weight") && tensor->name != "per_layer_token_embd.weight") || tensor->shape.size() != 2) return 0;
+        const uint64_t row = engram_row_bytes(tensor->type,tensor->shape[0]);
+        return row && tensor->shape[1] <= UINT64_MAX/row ? row*tensor->shape[1] : 0;
+    }
 };
 
 class Model {
@@ -63,6 +74,9 @@ private:
     std::vector<LayerStreams> streams_;
     std::set<std::string> checked_;
     uint64_t routed_bytes_ = 0, engram_bytes_ = 0, dense_bytes_ = 0;
+    struct View { const GgufFile* file; TensorInfo tensor; };
+    std::map<std::string,View> engram_views_;
+    void make_engram_views();
     void validate();
     void require(const std::string& name, const std::vector<uint64_t>& shape, int group = 0,
                  const std::vector<uint64_t>& alternative = {});

@@ -22,9 +22,11 @@ cmake --build build/cuda --target strata -j24
 ```
 
 GGML's CPU quantizer/dot-product helpers are used from that source tree.
-The inference implementation is in `src/deepseek41/`. CUDA on Linux is the
-validated backend; this family is not enabled on HIP or SYCL. Qwen remains
-the default path when the DeepSeek build option is off.
+The CUDA inference implementation is in `src/deepseek41/`. This document
+describes the Linux CUDA profile; see [DeepSeek on Intel XPU](DEEPSEEK41_SYCL.md)
+for this branch's separate SYCL implementation and its validation scope.
+HIP is not enabled. Qwen remains the default path when the DeepSeek build
+option is off.
 
 ## Run the adopted configuration
 

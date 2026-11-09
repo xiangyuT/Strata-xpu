@@ -31,7 +31,8 @@ inline bool native_mwaitx_enabled() {
 #if (defined(__GNUC__) || defined(__clang__)) && defined(__x86_64__)
 __attribute__((target("mwaitx")))
 inline void hardware_epoch_wait(const std::atomic<uint64_t> & epoch,const std::atomic<bool> & stop,uint64_t seen) {
-    _mm_monitorx(&epoch,0,0);
+    // Clang's intrinsic accepts void*, although MONITORX only watches memory.
+    _mm_monitorx(const_cast<std::atomic<uint64_t>*>(&epoch),0,0);
     // Do not move the checked load before arming the cache-line monitor.
     std::atomic_thread_fence(std::memory_order_seq_cst);
     if(!stop.load(std::memory_order_acquire) && epoch.load(std::memory_order_acquire)==seen)

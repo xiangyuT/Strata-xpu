@@ -4893,9 +4893,13 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     // 147-verify STRATA_GU_SWIGLU=1: gate/up + SwiGLU + q8_1 in one launch where the CUDA layout's 16-lane kernel would run
     bool gs_done = false;
 #if STRATA_EXP_LAYOUTS
-    const bool gs_layout = !fused_gu && em0 == 0;
+    bool gs_layout = !fused_gu && em0 == 0;
 #else
-    const bool gs_layout = true;
+    bool gs_layout = true;
+#endif
+#if defined(STRATA_NATIVE_DEEPSEEK41)
+    // The fused Qwen SwiGLU kernel has no DeepSeek clamp parameter.
+    if (limit > 0) gs_layout = false;
 #endif
     if (gs_layout && g_exp_phase == 0 && !v1 && gu_swiglu_on() && !(expdec_mode() && !g_old_kernels && expdec_gu_ok(L))) {
         switch (L.gu_type) {
