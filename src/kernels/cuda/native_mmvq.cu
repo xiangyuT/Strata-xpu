@@ -1168,11 +1168,16 @@ static bool s26_tsum_on() {
 
 // S26 STRATA_LFUSE (PAIR): blocks n_out.. compute the same rows of w2 into y2 (two matrices of one shape on one
 // input in one launch; each output's code is the single matrix's)
-template<typename F, int NCOLS, int NW, int ROWS, bool TS = false, bool PAIR = false>
+template<typename F, int NCOLS, int NW, int ROWS, bool TS = false, bool PAIR = false, bool GROUPED = false>
 __launch_bounds__(NW * WARP, (ROWS <= 2 ? 4 : 1))
 __global__ void native_mmvq_multi_kernel(const typename F::Block* __restrict__ w, const Q81Block* x_, float* y_,
                                          int n_in, int n_out,
                                          const typename F::Block* __restrict__ w2 = nullptr, float* __restrict__ y2 = nullptr) {
+    if constexpr (GROUPED) {
+        w+=std::size_t(blockIdx.y)*n_out*(n_in/F::DIV);
+        x_+=std::size_t(blockIdx.y)*(n_in/Q8K);
+        y_+=std::size_t(blockIdx.y)*n_out;
+    }
     const Q81Block* STRATA_PDL_RESTRICT x = x_;   // __restrict__ below sm_70 only (pdl.hpp, #1469)
     float* STRATA_PDL_RESTRICT y = y_;
     constexpr int BPI = F::BPI * NW / WARPS;           // blocks per iteration scale with the warp count
@@ -1183,7 +1188,8 @@ __global__ void native_mmvq_multi_kernel(const typename F::Block* __restrict__ w
     }
     const int row0 = ROWS * bxi;
     const int blocks_per_row = n_in / F::DIV;
-    const int x_stride = n_in / Q8K;                   // Q8_1 blocks per activation column
+    const int x_stride = (GROUPED ? int(gridDim.y) : 1) * n_in / Q8K;                   // Q8_1 blocks per activation column
+    const int y_stride=(GROUPED ? int(gridDim.y) : 1)*n_out;
     float tmp[NCOLS][ROWS] = {};
     int kbx = tid / F::T;
     if constexpr (kPdlPrefetch) {
@@ -1250,7 +1256,7 @@ __global__ void native_mmvq_multi_kernel(const typename F::Block* __restrict__ w
         const float sum = s26ts::tsum<P>(v, int(threadIdx.x));
         const int k = s26ts::tsum_token<P>(int(threadIdx.x));
         const int j = k / ROWS, i = k % ROWS;
-        if (int(threadIdx.x) == s26ts::tsum_lane<P>(k) && k < V && row0 + i < n_out) y[std::size_t(j) * n_out + row0 + i] = sum;
+        if (int(threadIdx.x) == s26ts::tsum_lane<P>(k) && k < V && row0 + i < n_out) y[std::size_t(j) * y_stride + row0 + i] = sum;
         return;
     }
 #pragma unroll
@@ -1260,7 +1266,7 @@ __global__ void native_mmvq_multi_kernel(const typename F::Block* __restrict__ w
 #pragma unroll
             for (int l = 0; l < NW - 1; ++l) tmp[j][i] += partial[l][j][i][threadIdx.x];
             tmp[j][i] = warp_sum(tmp[j][i]);
-            if (threadIdx.x == i && row0 + i < n_out) y[std::size_t(j) * n_out + row0 + i] = tmp[j][i];
+            if (threadIdx.x == i && row0 + i < n_out) y[std::size_t(j) * y_stride + row0 + i] = tmp[j][i];
         }
     }
 }
@@ -1664,14 +1670,22 @@ struct IlQ6K {
     }
 };
 
-template <typename I, int NC, int R>
+template <typename I, int NC, int R, bool GROUPED=false>
 __launch_bounds__(4 * WARP)
 __global__ void native_mmvq_il_kernel(const typename I::F::Block* __restrict__ w, const int* __restrict__ xq,
                                       const float* __restrict__ xd, float* __restrict__ y, int n_in, int n_out) {
     using F = typename I::F;
     constexpr int SUB = WARP / F::T;   // weight blocks a chunk covers
     const int lane = int(threadIdx.x) & (WARP - 1);
-    const auto x = q8_1_cols<NC, I::PM>(xq, xd, n_in / Q8K);
+    if constexpr (GROUPED) {
+        static_assert(!I::PM && NC>1,"grouped interleaved projection uses block-major columns");
+        const std::size_t first=std::size_t(blockIdx.y)*(n_in/Q8K);
+        constexpr int CP=Q81Il<NC,false>::CP;
+        w+=std::size_t(blockIdx.y)*n_out*(n_in/F::DIV);
+        xq+=first*8*CP; xd+=first*CP; y+=std::size_t(blockIdx.y)*n_out;
+    }
+    const int output_stride=(GROUPED ? int(gridDim.y) : 1)*n_out;
+    const auto x = q8_1_cols<NC, I::PM>(xq, xd, (GROUPED ? int(gridDim.y) : 1)*n_in / Q8K);
     const int bpr = n_in / F::DIV;
     const int kqs = F::kqs(lane);
     const int nm = (bpr + SUB - 1) / SUB;
@@ -1712,7 +1726,7 @@ __global__ void native_mmvq_il_kernel(const typename I::F::Block* __restrict__ w
                 s += acc[2][i][c];
                 s += acc[3][i][c];
                 s = warp_sum(s);
-                if (lane == 0 && row0 + i < n_out) y[std::size_t(c) * n_out + row0 + i] = s;
+                if (lane == 0 && row0 + i < n_out) y[std::size_t(c) * output_stride + row0 + i] = s;
             }
     }
 }
@@ -3256,7 +3270,113 @@ void native_mmvq_il(int ggml_type, const void* weights, const void* x_q8_1, cons
     launch_check();
 }
 
+void native_quantize_q8_1_il_wide(const float* x,void* x_q8_1,void* x_il,int n_in,int ncols,void* stream) {
+    validate_shape(n_in,ncols);
+    if(ncols<5 || ncols>8) throw std::invalid_argument("wide IL needs 5..8 columns");
+    validate_pointer(x);validate_pointer(x_q8_1);validate_pointer(x_il);validate_stream(stream);
+    const auto parts=q8_1_il_parts(x_il,n_in,ncols);
+    const int total=n_in*ncols;
+    native_quantize_q8_1_il_kernel<<<unsigned((total+QUANT_THREADS-1)/QUANT_THREADS),QUANT_THREADS,0,
+        static_cast<cudaStream_t>(stream)>>>(x,static_cast<Q81Block*>(x_q8_1),const_cast<int*>(parts.bm),
+        const_cast<int*>(parts.pm),const_cast<float*>(parts.d),n_in,total,native_q8_1_il_cp(ncols));
+    launch_check();
+}
+namespace {
+template<class I>
+void launch_il_wide(const void* weights,const void* x_il,float* y,int ni,int no,int nc,cudaStream_t stream) {
+    // One row per warp bounds the eight-column accumulator footprint. This
+    // is a single geometry choice, independent of the existing tuning table.
+    const auto parts=q8_1_il_parts(x_il,ni,nc);
+    const auto* w=static_cast<const typename I::F::Block*>(weights);
+    const unsigned blocks=unsigned((no+3)/4);
+    switch(nc) {
+#define WIDE_IL(N) case N: native_mmvq_il_kernel<I,N,1><<<blocks,4*WARP,0,stream>>>(w,parts.bm,parts.d,y,ni,no);break
+        WIDE_IL(5);WIDE_IL(6);WIDE_IL(7);WIDE_IL(8);
+#undef WIDE_IL
+        default:throw std::invalid_argument("wide IL needs 5..8 columns");
+    }
+}
+}
+void native_mmvq_il_wide(int type,const void* weights,const void* x_il,float* y,int ni,int no,int nc,void* stream) {
+    validate_shape(ni,nc,QK);
+    if(no<1 || nc<5 || nc>8 || (type!=12 && type!=14) || !g_multi_exact)
+        throw std::invalid_argument("wide IL needs exact Q4_K/Q6_K and 5..8 columns");
+    validate_pointer(weights);validate_pointer(x_il);validate_pointer(y);validate_stream(stream);
+    if(type==12) launch_il_wide<IlQ4K>(weights,x_il,y,ni,no,nc,static_cast<cudaStream_t>(stream));
+    else launch_il_wide<IlQ6K>(weights,x_il,y,ni,no,nc,static_cast<cudaStream_t>(stream));
+    launch_check();
+}
+
+namespace {
+template<class F,int NC>
+void grouped_plain(const void* weights,const void* quant,float* y,int ni,int no,int groups,cudaStream_t s) {
+    const auto* w=static_cast<const typename F::Block*>(weights);
+    const auto* x=static_cast<const Q81Block*>(quant);
+    constexpr int R=2;
+    launch_pdl(native_mmvq_multi_kernel<F,NC,WARPS,R,false,false,true>,dim3((no+R-1)/R,groups),dim3(WARP,WARPS),0,s,
+        w,x,y,ni,no,(const typename F::Block*)nullptr,(float*)nullptr);
+}
+template<class F>
+void grouped_plain_columns(const void* w,const void* x,float* y,int ni,int no,int g,int nc,cudaStream_t s) {
+    switch(nc) {
+#define STRATA_GROUPED_NC(N) case N: grouped_plain<F,N>(w,x,y,ni,no,g,s);break;
+        STRATA_GROUPED_NC(2) STRATA_GROUPED_NC(3) STRATA_GROUPED_NC(4)
+        STRATA_GROUPED_NC(5) STRATA_GROUPED_NC(6) STRATA_GROUPED_NC(7) STRATA_GROUPED_NC(8)
+#undef STRATA_GROUPED_NC
+        default:throw std::invalid_argument("grouped MMVQ columns");
+    }
+}
+template<class I,int NC,int R>
+void grouped_il(const void* weights,const void* il,float* y,int ni,int no,int groups,cudaStream_t s) {
+    const auto* w=static_cast<const typename I::F::Block*>(weights);
+    const auto parts=q8_1_il_parts(il,ni*groups,NC);
+    const dim3 grid(((no+R-1)/R+3)/4,groups);
+    native_mmvq_il_kernel<I,NC,R,true><<<grid,4*WARP,0,s>>>(w,parts.bm,parts.d,y,ni,no);
+}
+template<class I,int NC>
+void grouped_il_rows(int rows,const void* w,const void* x,float* y,int ni,int no,int groups,cudaStream_t s) {
+    if(rows==1) grouped_il<I,NC,1>(w,x,y,ni,no,groups,s);
+    else if(rows==4) grouped_il<I,NC,4>(w,x,y,ni,no,groups,s);
+    else grouped_il<I,NC,2>(w,x,y,ni,no,groups,s);
+}
+template<class I>
+void grouped_il_columns(int r,const void* w,const void* x,float* y,int ni,int no,int g,int nc,cudaStream_t s) {
+    switch(nc) {
+        case 2:grouped_il_rows<I,2>(r,w,x,y,ni,no,g,s);break;
+        case 3:grouped_il_rows<I,3>(r,w,x,y,ni,no,g,s);break;
+        case 4:grouped_il_rows<I,4>(r,w,x,y,ni,no,g,s);break;
+        default:throw std::invalid_argument("grouped interleaved MMVQ columns");
+    }
+}
+} // namespace
+void native_mmvq_grouped(int type,const void* weights,const void* x_q8_1,const void* x_il,float* y,
+                         int ni,int no,int groups,int nc,void* stream) {
+    if((type!=12 && type!=14) || !g_multi_exact || groups<1 || groups>64 || no<1 ||
+       int64_t(groups)*std::max(ni,no)>INT32_MAX) throw std::invalid_argument("grouped MMVQ layout");
+    validate_shape(ni,nc,QK);validate_pointer(weights);validate_pointer(x_q8_1);validate_pointer(y);validate_stream(stream);
+    const auto s=static_cast<cudaStream_t>(stream);
+    if(nc==1) {
+        // Keep the existing singleton arithmetic and launch selector exactly.
+        const size_t wb=native_mmvq_weight_bytes(type,ni,no),qb=native_q8_1_bytes(ni);
+        for(int g=0;g<groups;++g) native_mmvq(type,static_cast<const uint8_t*>(weights)+size_t(g)*wb,
+            static_cast<const uint8_t*>(x_q8_1)+size_t(g)*qb,y+size_t(g)*no,ni,no,1,stream);
+        return;
+    }
+    if(nc<=4 && native_mmvq_il_supported(type,nc,no)) {
+        validate_pointer(x_il);const int rows=g_tune_rows ? g_tune_rows : il_rows(type,nc,no);
+        if(type==12) grouped_il_columns<IlQ4K>(rows,weights,x_il,y,ni,no,groups,nc,s);
+        else grouped_il_columns<IlQ6K>(rows,weights,x_il,y,ni,no,groups,nc,s);
+    } else {
+        if(type==12) grouped_plain_columns<Q4KTraits>(weights,x_q8_1,y,ni,no,groups,nc,s);
+        else grouped_plain_columns<Q6KTraits>(weights,x_q8_1,y,ni,no,groups,nc,s);
+    }
+    launch_check();
+}
+
 #else  // HIP: no interleaved path
+void native_mmvq_grouped(int,const void*,const void*,const void*,float*,int,int,int,int,void*) {
+    throw std::invalid_argument("native grouped projection is CUDA only");
+}
 std::size_t native_q8_1_il_bytes(int n_in, int ncols) { return native_q8_1_bytes(n_in, ncols) * 2; }
 void native_quantize_q8_1_il(const float*, void*, void*, int, int, void*) {
     throw std::invalid_argument("native_quantize_q8_1_il is CUDA only");

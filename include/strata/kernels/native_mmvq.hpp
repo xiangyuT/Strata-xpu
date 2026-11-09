@@ -31,6 +31,13 @@ std::size_t native_q8_1_bytes(int n_in, int ncols = 1);
 // graph capture; captured graphs keep the kernels they captured.
 void native_mmvq_set_multi_exact(bool exact);
 bool native_mmvq_multi_exact();
+// Native DeepSeek grouped output projection. Unchanged raw Q4_K/Q6_K matrices
+// [groups][n_out][n_in], x/y token-major with all groups contiguous per token.
+// x_q8_1 and optional x_il quantize the complete groups*n_in input. Reuses
+// the ordinary exact selector (interleaved at 2..4 columns, plain at 1/5..8).
+// CUDA only; no allocation or weight repacking, explicit stream.
+void native_mmvq_grouped(int type,const void* weights,const void* x_q8_1,const void* x_il,
+                         float* y,int n_in,int n_out,int groups,int ncols,void* stream);
 // B6 (lab, opt-in STRATA_B6_MMVQ_ROWS=1): the exact multi-column layout with the activation blocks of every column
 // loaded once per weight block and reused across the block's rows (bitwise the same sums as the default exact
 // layout). 0 = off (default), 1 = 2 rows per block, 2 / 4 / 8 = that many rows. Q4_K, Q5_K, Q6_K and IQ4_XS only.
@@ -161,6 +168,13 @@ bool native_mmvq_il_supported(int ggml_type, int ncols, int n_out);
 // warp takes 1, 2 or 4 rows and reads the columns from the interleaved copy; native_mmvq (x_q8_1) when not supported.
 void native_mmvq_il(int ggml_type, const void* weights, const void* x_q8_1, const void* x_il, float* y, int n_in,
                     int n_out, int ncols, void* stream);
+// CUDA opt-in for DeepSeek verification windows: 5..8 columns, Q4_K/Q6_K,
+// one row per warp. Original weight blocks and Q8_1 bytes, unchanged exact
+// dot/reduction order. Separate entries leave the measured 1..4-column table
+// and its callers unchanged. Storage uses native_q8_1_il_bytes (CP=8).
+void native_quantize_q8_1_il_wide(const float* x,void* x_q8_1,void* x_il,int n_in,int ncols,void* stream);
+void native_mmvq_il_wide(int ggml_type,const void* weights,const void* x_il,float* y,
+                         int n_in,int n_out,int ncols,void* stream);
 // The table's rows a warp (0, 1, 2, 4; 0 = native_mmvq's kernels) for a card of compute capability `cc` (major * 10 + minor).
 // Per-architecture tables plus STRATA_MMVQ_IL_ROWS; see native_mmvq.cu and docs/MMVQ_IL_TABLE.md.
 int native_mmvq_il_rows_for(int cc, int ggml_type, int ncols, int n_out);

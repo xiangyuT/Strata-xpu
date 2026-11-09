@@ -85,3 +85,18 @@ node_modules/
 # screenshots and checkpoints from the Mac rebuild live outside git (StrataSplit\evidence-archive)
 /apps/host/docs/evidence/
 /apps/host/docs/checkpoints/
+
+# DeepSeek development artifacts stay local; publish the portable example instead.
+/trial/
+/runtime/
+/docs/DEEPSEEK41_EXPERIMENTS.md
+/docs/deepseek41-experiments/
+*.gguf
+*.safetensors
+.env
+.env.*
+*api-key*.txt
+*api_key*.txt
+*.key
+*.pem
+*.p12
