@@ -20,6 +20,7 @@ class Core;
 class Merge;
 class CorePV;
 class MergeVec2;
+class MergeSubgroup;
 inline float h2f(uint16_t b){return float(sycl::bit_cast<sycl::half>(b));}
 // For every signed byte x, x is reconstructed exactly as
 // bit_cast<float>(0x4b000000 | (uint8_t(x)^0x80)) - (2^23+128).
@@ -73,8 +74,40 @@ inline sycl::float4 dot8_head4(const float q[4][8],const float*k){
  for(int j=2;j<8;++j)v=sycl::fma(sycl::float4(k[j]),sycl::float4(q[0][j],q[1][j],q[2][j],q[3][j]),v);
  return v;
 }
+// Each subgroup loads the chunk weights once, then broadcasts them to its
+// independent output dimensions. Keep the original serial FMA order.
+// This path is selected only for cap2051 (33 chunks).
+inline void merge_subgroup(sycl::queue&queue,const float*scratch,float*out,int nq,int cap,QsaShapes sh){
+ const int chunks=(cap+CH-1)/CH,heads=sh.n_head;
+ const long long stride=qsa_decode_attn_scratch_floats(cap,sh);
+ const float*pm=scratch+size_t(chunks)*heads*HD,*pl=pm+size_t(chunks)*heads;
+ queue.parallel_for<MergeSubgroup>(sycl::nd_range<3>(sycl::range<3>(1,nq,size_t(heads)*128),sycl::range<3>(1,1,128)),
+  [=](sycl::nd_item<3>it)[[sycl::reqd_sub_group_size(32)]]{
+   const int qi=it.get_group(1),head=it.get_group(2),d=2*it.get_local_id(2),kv=head/G,h=head%G;
+   const auto sg=it.get_sub_group();const int lane=sg.get_local_linear_id();
+   const float*pa=scratch+size_t(qi)*stride,*ms=pm+size_t(qi)*stride,*ls=pl+size_t(qi)*stride;
+   const int slot0=kv*chunks+lane,slot1=slot0+32;
+   const float m0=lane<chunks?ms[slot0*G+h]:-FLT_MAX,m1=lane+32<chunks?ms[slot1*G+h]:-FLT_MAX;
+   const float maximum=sycl::reduce_over_group(sg,sycl::fmax(m0,m1),sycl::maximum<float>{});
+   const int valid0=m0!=-FLT_MAX,valid1=m1!=-FLT_MAX;
+   const float w0=valid0?sycl::native::exp(m0-maximum):0.f,w1=valid1?sycl::native::exp(m1-maximum):0.f;
+   const float l0=valid0?ls[slot0*G+h]:0.f,l1=valid1?ls[slot1*G+h]:0.f;
+   float sum=0.f;sycl::float2 value(0.f);
+   for(int c=0;c<chunks;++c){
+    const int i=c&31;
+    const float w=sycl::select_from_group(sg,c<32?w0:w1,i);
+    const float l=sycl::select_from_group(sg,c<32?l0:l1,i);
+    const int valid=sycl::select_from_group(sg,c<32?valid0:valid1,i);
+    if(!valid)continue;
+    sum=sycl::fma(l,w,sum);
+    const auto v=*reinterpret_cast<const sycl::float2*>(pa+(size_t(kv*chunks+c)*G+h)*HD+d);
+    value=sycl::fma(v,sycl::float2(w),value);
+   }
+   *reinterpret_cast<sycl::float2*>(out+(size_t(qi)*heads+head)*HD+d)=sum>0.f?value/sum:sycl::float2(0.f);
+  });
+}
 template<bool Optimize>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,const int32_t*ids,const int32_t*steps,
-            int cap,QsaShapes sh,float*scratch,float*out,int nq){
+            int cap,QsaShapes sh,float*scratch,float*out,int nq,bool subgroup_merge=false){
  using namespace cute;
  const int chunks=(cap+CH-1)/CH,nkv=sh.n_head_kv,heads=sh.n_head,page=sh.page_size;
  const long long stride=qsa_decode_attn_scratch_floats(cap,sh);
@@ -169,6 +202,7 @@ template<bool Optimize>void launch(sycl::queue&queue,const float*q,QsaAttnPools 
 #pragma unroll
     for(int j=0;j<4;++j)pa[(size_t(slot)*G+h)*HD+d+j]=acc[h][j];}
   });
+ if(subgroup_merge){merge_subgroup(queue,scratch,out,nq,cap,sh);return;}
  if constexpr(Optimize){
   // Two independent dimensions share max/exp/sum while keeping each output's
   // chunk order, FMA chain and division unchanged.
@@ -203,6 +237,138 @@ template<bool Optimize>void launch(sycl::queue&queue,const float*q,QsaAttnPools 
  }
 }
 }
+namespace strata::kernels::tla_prompt_resident {
+using namespace tla_prompt_fp32;
+template<int>class Core;
+template<int>class Merge;
+template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,const int32_t*ids,const int32_t*steps,
+            int cap,QsaShapes sh,float*scratch,float*out,int nq){
+ using namespace cute;
+ const int chunks=(cap+CH-1)/CH,nkv=sh.n_head_kv,heads=sh.n_head,page=sh.page_size;
+ const long long stride=qsa_decode_attn_scratch_floats(cap,sh);
+ float*pm=scratch+size_t(chunks)*heads*HD,*pl=pm+size_t(chunks)*heads;
+ using CoreType=Core<Mode>;
+ queue.parallel_for<CoreType>(
+  sycl::nd_range<3>(sycl::range<3>(nq,nkv,size_t(chunks)*Threads),sycl::range<3>(1,1,Threads)),
+  [=](sycl::nd_item<3>it)[[sycl::reqd_sub_group_size(16)]]{
+   const int qi=it.get_group(0),kv=it.get_group(1),chunk=it.get_group(2),t=it.get_local_id(2),lane=t&15,sgid=t>>4;
+   const auto sg=it.get_sub_group();
+   auto&sp=*sycl::ext::oneapi::group_local_memory_for_overwrite<float[G][CH]>(it.get_group());
+   auto&srow=*sycl::ext::oneapi::group_local_memory_for_overwrite<long long[CH]>(it.get_group());
+   const int width=steps[size_t(qi)*kStepCount+kStepWidth],c0=chunk*CH,n_here=sycl::min(CH,width-c0),slot=kv*chunks+chunk;
+   float*pa=scratch+size_t(qi)*stride,*ms=pm+size_t(qi)*stride,*ls=pl+size_t(qi)*stride;
+   const float*query=q+(size_t(qi)*heads+kv*G)*HD;
+   if(n_here<=0){if(t<G){ms[slot*G+t]=-FLT_MAX;ls[slot*G+t]=0.f;}return;}
+   long long row_check=-1;
+   if(t<CH){long long r=-1;if(t<n_here){const int cell=ids[size_t(qi)*cap+c0+t];const int pg=p.page_table[cell/page];if(pg>=0)r=(static_cast<long long>(pg)*nkv+kv)*page+cell%page;}srow[t]=r;row_check=r;}
+   const float down=1.f/16.f;
+   bool full_resident=false;
+   if constexpr(Mode!=0){
+    auto&flags=*sycl::ext::oneapi::group_local_memory_for_overwrite<int[4]>(it.get_group());
+    const bool valid=sycl::all_of_group(sg,row_check>=0);
+    if(lane==0)flags[sgid]=int(valid);
+    it.barrier(sycl::access::fence_space::local_space);
+    full_resident=n_here==CH&&flags[0]&&flags[1]&&flags[2]&&flags[3];
+   }else it.barrier(sycl::access::fence_space::local_space);
+   auto do_qk=[&](auto tag){constexpr bool All=decltype(tag)::value;
+    // Existing cute universal 128-bit vector copy, preserving each lane's
+    // original eight FP32 dimensions. Keep TLA block key copy unchanged.
+#pragma clang loop unroll(disable)
+    for(int hg=0;hg<G;hg+=4){
+     float q0[4][8],q16[4][8];
+#pragma unroll
+     for(int h=0;h<4;++h){
+      auto src0=make_tensor(make_gmem_ptr(query+(hg+h)*HD+lane*8),make_shape(_8{}),make_stride(_1{}));
+      auto src16=make_tensor(make_gmem_ptr(query+(hg+h)*HD+(lane+16)*8),make_shape(_8{}),make_stride(_1{}));
+      auto dst0=make_tensor(make_rmem_ptr(&q0[h][0]),make_shape(_8{}),make_stride(_1{}));
+      auto dst16=make_tensor(make_rmem_ptr(&q16[h][0]),make_shape(_8{}),make_stride(_1{}));
+      copy(AutoVectorizingCopyWithAssumedAlignment<128>{},src0,dst0);
+      copy(AutoVectorizingCopyWithAssumedAlignment<128>{},src16,dst16);
+     }
+     for(int c=sgid;c<CH;c+=Threads/16){
+      if constexpr(!All){if(c>=n_here||srow[c]<0){if(lane<4)sp[hg+lane][c]=-FLT_MAX;continue;}}
+      float k0[8],k16[8];key16_tla(p,srow[c],lane,sg,k0,k16);
+      sycl::float4 v=dot8_head4(q0,k0)+dot8_head4(q16,k16);
+      // Native reduction retains the lane-zero offset8/4/2/1 tree.
+      v=sycl::reduce_over_group(sg,v,sycl::plus<sycl::float4>{});
+      if(lane==0){
+#pragma unroll
+       for(int h=0;h<4;++h)sp[hg+h][c]=v[h]*down;
+      }
+     }
+    }
+   };
+   if constexpr(Mode!=0){if(full_resident)do_qk(std::true_type{});else do_qk(std::false_type{});}
+   else do_qk(std::false_type{});
+   it.barrier(sycl::access::fence_space::local_space);
+   // Fold original warp32 offset16 first, then reproduce offsets8/4/2/1.
+   for(int h=sgid;h<G;h+=Threads/16){
+    float m=sycl::fmax(sycl::fmax(sp[h][lane],sp[h][lane+32]),sycl::fmax(sp[h][lane+16],sp[h][lane+48]));
+#pragma unroll
+    for(int off=8;off>0;off>>=1)m=sycl::fmax(m,sycl::permute_group_by_xor(sg,m,off));
+    const float ea=(lane<n_here&&srow[lane]>=0)?sycl::native::exp(sp[h][lane]-m):0.f;
+    const float eb=(lane+32<n_here&&srow[lane+32]>=0)?sycl::native::exp(sp[h][lane+32]-m):0.f;
+    const float ec=(lane+16<n_here&&srow[lane+16]>=0)?sycl::native::exp(sp[h][lane+16]-m):0.f;
+    const float ed=(lane+48<n_here&&srow[lane+48]>=0)?sycl::native::exp(sp[h][lane+48]-m):0.f;
+    sp[h][lane]=ea;sp[h][lane+32]=eb;sp[h][lane+16]=ec;sp[h][lane+48]=ed;
+    float l=(ea+eb)+(ec+ed);
+#pragma unroll
+    for(int off=8;off>0;off>>=1)l+=sycl::permute_group_by_xor(sg,l,off);
+    if(lane==0){ms[slot*G+h]=m;ls[slot*G+h]=l;}
+   }
+   it.barrier(sycl::access::fence_space::local_space);
+   auto do_pv=[&](auto tag){constexpr bool All=decltype(tag)::value;
+   const int d=4*t;sycl::float4 acc[G];
+#pragma unroll
+   for(int h=0;h<G;++h)acc[h]=sycl::float4(0.f);
+   for(int c=0;c<(All?CH:n_here);c+=8){long long rows[8];bool full=All||c+8<=n_here;
+#pragma unroll
+    for(int j=0;j<8;++j){if constexpr(All)rows[j]=srow[c+j];else{rows[j]=c+j<n_here?srow[c+j]:-1;full=full&&rows[j]>=0;}}
+    if(full){sycl::float4 values[8];
+#pragma unroll
+     for(int j=0;j<8;++j){const auto codes=*reinterpret_cast<const sycl::vec<int8_t,4>*>(p.v_q+rows[j]*HD+d);
+      values[j]=value_codes<false>(codes)*h2f(p.v_scale[rows[j]*4+d/64]);}
+#pragma unroll
+     for(int h=0;h<G;++h){const auto p0=*reinterpret_cast<const sycl::float4*>(&sp[h][c]);const auto p1=*reinterpret_cast<const sycl::float4*>(&sp[h][c+4]);
+      acc[h]=sycl::fma(sycl::float4(p0[0]),values[0],acc[h]);acc[h]=sycl::fma(sycl::float4(p0[1]),values[1],acc[h]);
+      acc[h]=sycl::fma(sycl::float4(p0[2]),values[2],acc[h]);acc[h]=sycl::fma(sycl::float4(p0[3]),values[3],acc[h]);
+      acc[h]=sycl::fma(sycl::float4(p1[0]),values[4],acc[h]);acc[h]=sycl::fma(sycl::float4(p1[1]),values[5],acc[h]);
+      acc[h]=sycl::fma(sycl::float4(p1[2]),values[6],acc[h]);acc[h]=sycl::fma(sycl::float4(p1[3]),values[7],acc[h]);
+     }
+    }else{
+#pragma unroll
+     for(int j=0;j<8;++j){if(rows[j]<0)continue;
+      const auto codes=*reinterpret_cast<const sycl::vec<int8_t,4>*>(p.v_q+rows[j]*HD+d);
+      const auto value=value_codes<false>(codes)*h2f(p.v_scale[rows[j]*4+d/64]);
+#pragma unroll
+      for(int h=0;h<G;++h)acc[h]=sycl::fma(sycl::float4(sp[h][c+j]),value,acc[h]);
+     }
+    }
+   }
+#pragma unroll
+   for(int h=0;h<G;++h){
+#pragma unroll
+    for(int j=0;j<4;++j)pa[(size_t(slot)*G+h)*HD+d+j]=acc[h][j];}
+   };
+   if constexpr(Mode==2){if(full_resident)do_pv(std::true_type{});else do_pv(std::false_type{});}
+   else do_pv(std::false_type{});
+
+  });
+ queue.parallel_for<Merge<Mode>>(sycl::nd_range<3>(sycl::range<3>(1,nq,size_t(heads)*HD),sycl::range<3>(1,1,HD)),
+  [=](sycl::nd_item<3>it)[[sycl::reqd_sub_group_size(32)]]{
+   const int qi=it.get_group(1),head=it.get_group(2),d=it.get_local_id(2),kv=head/G,h=head%G;
+   const float*pa=scratch+size_t(qi)*stride,*ms=pm+size_t(qi)*stride,*ls=pl+size_t(qi)*stride;
+   float maximum=-FLT_MAX;
+#pragma unroll
+   for(int c=0;c<chunks;++c)maximum=sycl::fmax(maximum,ms[(kv*chunks+c)*G+h]);
+   float sum=0.f,value=0.f;
+   for(int c=0;c<chunks;++c){const int slot=kv*chunks+c;const float m=ms[slot*G+h];if(m==-FLT_MAX)continue;
+    const float w=sycl::native::exp(m-maximum);sum=sycl::fma(ls[slot*G+h],w,sum);value=sycl::fma(pa[(size_t(slot)*G+h)*HD+d],w,value);}
+   out[(size_t(qi)*heads+head)*HD+d]=sum>0.f?value/sum:0.f;
+  });
+}
+}
+
 namespace strata::kernels {
 bool qsa_prompt_attn_tla_batch(const float*q,const QsaAttnPools&p,const int32_t*ids,const int32_t*steps,int64_t cap,
  const QsaShapes&sh,float*scratch,float*out,int64_t nq,void*stream){
@@ -225,11 +391,22 @@ bool qsa_prompt_attn_tla_batch(const float*q,const QsaAttnPools&p,const int32_t*
  return false;
 #endif
  static const bool pv_vec2=[] {const char*v=std::getenv("STRATA_SYCL_TLA_PV_VEC2");return v&&v[0]=='1';}();
- if(pv_vec2&&nq==16&&cap==2051){
-  tla_prompt_fp32::launch<true>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+ static const bool merge_sg=[] {const char*v=std::getenv("STRATA_SYCL_TLA_MERGE_SG");return v&&v[0]=='1';}();
+ static const bool resident=[] {const char*v=std::getenv("STRATA_SYCL_TLA_RESIDENT");return v&&v[0]=='1';}();
+ const bool subgroup_merge=merge_sg&&nq==16&&cap==2051;
+ if(resident&&nq==16&&cap==2051&&!pv_vec2&&!subgroup_merge){
+  tla_prompt_resident::launch<2>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+  static thread_local bool announced_resident=false;
+  if(!announced_resident){std::fprintf(stderr,"strata: using SYCL TLA resident-chunk prompt attention\n");announced_resident=true;}
+ }else if(pv_vec2&&nq==16&&cap==2051){
+  tla_prompt_fp32::launch<true>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq),subgroup_merge);
   static thread_local bool announced_pv=false;
   if(!announced_pv){std::fprintf(stderr,"strata: using SYCL TLA exact PV bytes and two-dimension merge\n");announced_pv=true;}
- }else tla_prompt_fp32::launch<false>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+ }else tla_prompt_fp32::launch<false>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq),subgroup_merge);
+ if(subgroup_merge){
+  static thread_local bool announced_sg=false;
+  if(!announced_sg){std::fprintf(stderr,"strata: using SYCL TLA subgroup-shared prompt merge\n");announced_sg=true;}
+ }
  static thread_local bool announced=false;
  if(!announced){std::fprintf(stderr,"strata: using SYCL TLA FP32 prompt attention\n");announced=true;}
  return true;
