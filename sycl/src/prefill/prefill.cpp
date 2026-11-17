@@ -3630,13 +3630,18 @@ bool Prefill::run_impl(const int64_t *tokens, int64_t n, int64_t pos0,
                             std::fprintf(stderr, "strata: selection of %lld positions dumped to %s\n", (long long) T, dsel);
                         }
                     }
-                    if (old_attn || !strata::kernels::qsa_prompt_attn_batch(m.q, pools, m.sel_ids, m.steps_dev, m.cap, s,
+#ifdef STRATA_SYCL_TLA_ATTN
+                    static const bool tla_attn = [] { const char* v=std::getenv("STRATA_SYCL_TLA_ATTN"); return v&&v[0]=='1'; }();
+#else
+                    constexpr bool tla_attn = false;
+#endif
+                    // An explicit TLA selection takes priority over the default ESIMD prompt kernel.
+                    if (tla_attn || old_attn || !strata::kernels::qsa_prompt_attn_batch(m.q, pools, m.sel_ids, m.steps_dev, m.cap, s,
                                                                             m.attn, T, m.cs))
                         for (int64_t t0 = 0; t0 < T; t0 += m.attn_batch) {
                             const int64_t nb = std::min(m.attn_batch, T - t0);
 #ifdef STRATA_SYCL_TLA_ATTN
-                            static const bool tla_attn = [] { const char* v=std::getenv("STRATA_SYCL_TLA_ATTN"); return v&&v[0]=='1'; }();
-                            if (tla_attn && nb == 32 && m.cap == 2051 &&
+                            if (tla_attn &&
                                 strata::kernels::qsa_prompt_attn_tla_batch(m.q + t0 * kQW, pools, m.sel_ids + t0 * m.cap,
                                     m.steps_dev + t0 * strata::kernels::kStepCount, m.cap, s, m.attn_scratch,
                                     m.attn + t0 * ZV, nb, m.cs)) continue;

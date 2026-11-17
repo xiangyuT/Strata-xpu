@@ -65,6 +65,11 @@ Source setup does not make an unsupported model or backend compatible. Strata's 
 
 ## Working on the code
 
+- Local Strata development direction, confirmed by the user on 2026-11-17: use the TLA
+  attention implementation for the current work. Future kernel implementations default to
+  TLA or standard SYCL/joint_matrix approaches; do not use ESIMD as the default design.
+  Preserve earlier ESIMD measurements as provenance and validate each newly selected path.
+
 - How the engine works, every measured number, the API and all settings: [docs/DETAILS.md](docs/DETAILS.md) and
   the [paper](docs/paper/Strata-Paper.pdf).
 - The Terminal: [docs/TERMINAL.md](docs/TERMINAL.md) and [docs/TERMINAL_LAUNCH.md](docs/TERMINAL_LAUNCH.md). The app,
