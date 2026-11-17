@@ -3641,6 +3641,26 @@ bool Prefill::run_impl(const int64_t *tokens, int64_t n, int64_t pos0,
                         for (int64_t t0 = 0; t0 < T; t0 += m.attn_batch) {
                             const int64_t nb = std::min(m.attn_batch, T - t0);
 #ifdef STRATA_SYCL_TLA_ATTN
+                            // A full sparse selection writes ~26 MB of partials at 32 queries. Reuse half
+                            // the existing workspace with two ordered tiles; keep small contexts on the
+                            // original path. A successful first call also verifies the TLA device/pools.
+                            static const char* const tile16 = std::getenv("STRATA_SYCL_TLA_TILE16");
+                            if (tla_attn && tile16 && tile16[0] == '1' && nb == 32 && m.cap == 2051 &&
+                                p0 + t0 >= s.idx_top_k &&
+                                strata::kernels::qsa_prompt_attn_tla_batch(m.q + t0 * kQW, pools, m.sel_ids + t0 * m.cap,
+                                    m.steps_dev + t0 * strata::kernels::kStepCount, m.cap, s, m.attn_scratch,
+                                    m.attn + t0 * ZV, 16, m.cs) &&
+                                strata::kernels::qsa_prompt_attn_tla_batch(m.q + (t0 + 16) * kQW, pools,
+                                    m.sel_ids + (t0 + 16) * m.cap,
+                                    m.steps_dev + (t0 + 16) * strata::kernels::kStepCount, m.cap, s, m.attn_scratch,
+                                    m.attn + (t0 + 16) * ZV, 16, m.cs)) {
+                                static thread_local bool announced = false;
+                                if (!announced) {
+                                    std::fprintf(stderr, "strata: using SYCL TLA 16-query prefill tiles\n");
+                                    announced = true;
+                                }
+                                continue;
+                            }
                             if (tla_attn &&
                                 strata::kernels::qsa_prompt_attn_tla_batch(m.q + t0 * kQW, pools, m.sel_ids + t0 * m.cap,
                                     m.steps_dev + t0 * strata::kernels::kStepCount, m.cap, s, m.attn_scratch,
