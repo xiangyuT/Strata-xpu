@@ -742,6 +742,78 @@ inline void gemm(sycl::queue& q, const uint16_t* X, int64_t ldx, const uint16_t*
 }
 }  // namespace strata_bf16_det
 
+namespace strata_bf16_det {
+// Reuse each decoded weight pair across four independent token rows. Each
+// output retains the original two FMAs per K pair and the SG16 reduction tree.
+class Rows4;
+inline void gemm_rows4(sycl::queue &q, const uint16_t *X, int64_t ldx,
+                       const uint16_t *W, float *Y, int64_t T, int64_t N,
+                       int64_t K, int64_t ldy, float beta) {
+  constexpr int Rows = 4, Out = 4;
+  const int64_t nblk = (N + Out - 1) / Out,
+                total = ((T + Rows - 1) / Rows) * nblk, wgs = (total + 3) / 4;
+  q.parallel_for<Rows4>(
+      sycl::nd_range<1>(sycl::range<1>(wgs * 64), sycl::range<1>(64)),
+      [=](sycl::nd_item<1> it) [[sycl::reqd_sub_group_size(16)]] {
+        auto sg = it.get_sub_group();
+        const int lane = sg.get_local_linear_id();
+        const int64_t id = it.get_group(0) * 4 + sg.get_group_linear_id();
+        if (id >= total)
+          return;
+        const int64_t t0 = (id / nblk) * Rows, n0 = (id % nblk) * Out;
+        const uint32_t *xr[Rows], *wr[Out];
+        float acc[Rows][Out];
+#pragma unroll
+        for (int a = 0; a < Rows; ++a)
+          xr[a] = reinterpret_cast<const uint32_t *>(
+              X + sycl::min(t0 + a, T - 1) * ldx);
+#pragma unroll
+        for (int o = 0; o < Out; ++o)
+          wr[o] = reinterpret_cast<const uint32_t *>(
+              W + (n0 + (o < N - n0 ? o : 0)) * K);
+#pragma unroll
+        for (int a = 0; a < Rows; ++a)
+          for (int o = 0; o < Out; ++o)
+            acc[a][o] = 0.f;
+        for (int64_t k2 = lane; k2 < K / 2; k2 += 16) {
+          float x0[Rows], x1[Rows], w0[Out], w1[Out];
+#pragma unroll
+          for (int a = 0; a < Rows; ++a) {
+            const uint32_t v = xr[a][k2];
+            x0[a] = strata_bf16_det::bf16lo(v);
+            x1[a] = strata_bf16_det::bf16hi(v);
+          }
+#pragma unroll
+          for (int o = 0; o < Out; ++o) {
+            const uint32_t v = wr[o][k2];
+            w0[o] = strata_bf16_det::bf16lo(v);
+            w1[o] = strata_bf16_det::bf16hi(v);
+          }
+#pragma unroll
+          for (int a = 0; a < Rows; ++a) {
+#pragma unroll
+            for (int o = 0; o < Out; ++o) {
+              acc[a][o] = sycl::fma(w0[o], x0[a], acc[a][o]);
+              acc[a][o] = sycl::fma(w1[o], x1[a], acc[a][o]);
+            }
+          }
+        }
+#pragma unroll
+        for (int a = 0; a < Rows; ++a) {
+#pragma unroll
+          for (int o = 0; o < Out; ++o) {
+            const float v =
+                sycl::reduce_over_group(sg, acc[a][o], sycl::plus<float>());
+            if (lane == 0 && t0 + a < T && n0 + o < N) {
+              float *y = Y + (t0 + a) * ldy + n0 + o;
+              *y = beta == 0.f ? v : sycl::fma(beta, *y, v);
+            }
+          }
+        }
+      });
+}
+} // namespace strata_bf16_det
+
 namespace {
 // oneMKL's GEMM reads the last, partial tile of an operand from the wrong place when it lies more than 4 GiB into its
 // allocation (Arc A770, oneMKL 2026.1: a BF16 B placed past 4 GiB of a 10.5 GiB allocation gave its last 21 columns
@@ -839,6 +911,19 @@ void Gemm::bf16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64
         const int64_t xs = ldx ? ldx : K;
         if (det_mode != 0 && (K & 1) == 0 && (xs & 1) == 0 && N <= (det_mode == 2 ? (int64_t) 1 << 30 : (int64_t) 64) &&
             (reinterpret_cast<uintptr_t>(X) & 3u) == 0 && (reinterpret_cast<uintptr_t>(W) & 3u) == 0) {
+            static const bool rows4 = [] {
+                const char* v = std::getenv("STRATA_SYCL_PREFILL_BF16_ROWS4"); return v && v[0] == '1';
+            }();
+            if (rows4 && T >= 4096 && N == 48 && K == 2560 && xs == K && beta == 0.0f &&
+                strata::intel_gpu_gen(strata::q_of(stream_)->get_device()) == strata::IntelGpuGen::Battlemage) {
+                strata_bf16_det::gemm_rows4(*strata::q_of(stream_), X, xs, W, Y, T, N, K, ldy, beta);
+                static thread_local bool announced = false;
+                if (!announced) {
+                    std::fprintf(stderr, "strata: using SYCL prefill BF16 four-row reuse\n");
+                    announced = true;
+                }
+                return;
+            }
             strata_bf16_det::gemm(*strata::q_of(stream_), X, xs, W, Y, T, N, K, ldy, beta);
             return;
         }
