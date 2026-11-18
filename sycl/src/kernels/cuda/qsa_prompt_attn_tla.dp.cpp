@@ -285,14 +285,26 @@ inline void qk_reuse_four_keys(const QsaAttnPools& p, const long long* srow,
 template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,const int32_t*ids,const int32_t*steps,
             int cap,QsaShapes sh,float*scratch,float*out,int nq){
  using namespace cute;
- const int chunks=(cap+CH-1)/CH,nkv=sh.n_head_kv,heads=sh.n_head,page=sh.page_size;
+ constexpr bool scheduled = Mode == 5;
+ const int chunks = scheduled ? 33 : (cap+CH-1)/CH;
+ const int nkv = scheduled ? 2 : sh.n_head_kv, heads = scheduled ? 24 : sh.n_head;
+ const int page = scheduled ? 4 : sh.page_size;
  const long long stride=qsa_decode_attn_scratch_floats(cap,sh);
  float*pm=scratch+size_t(chunks)*heads*HD,*pl=pm+size_t(chunks)*heads;
  using CoreType=Core<Mode>;
  queue.parallel_for<CoreType>(
-  sycl::nd_range<3>(sycl::range<3>(nq,nkv,size_t(chunks)*Threads),sycl::range<3>(1,1,Threads)),
+  sycl::nd_range<3>((scheduled ? sycl::range<3>(1,1,1056*Threads) : sycl::range<3>(nq,nkv,size_t(chunks)*Threads)),sycl::range<3>(1,1,Threads)),
   [=](sycl::nd_item<3>it)[[sycl::reqd_sub_group_size(16)]]{
-   const int qi=it.get_group(0),kv=it.get_group(1),chunk=it.get_group(2),t=it.get_local_id(2),lane=t&15,sgid=t>>4;
+   int qi, kv, chunk;
+   if constexpr (scheduled) {
+    // Schedule 16 * 2 * 32 complete chunks before the 32 three-cell tails.
+    const unsigned group = it.get_group(2);
+    const unsigned pair = group < 1024 ? group / 32 : group - 1024;
+    qi = pair / 2; kv = pair % 2; chunk = group < 1024 ? group % 32 : 32;
+   } else {
+    qi = it.get_group(0); kv = it.get_group(1); chunk = it.get_group(2);
+   }
+   const int t=it.get_local_id(2),lane=t&15,sgid=t>>4;
    const auto sg=it.get_sub_group();
    auto&sp=*sycl::ext::oneapi::group_local_memory_for_overwrite<float[G][CH]>(it.get_group());
    auto&srow=*sycl::ext::oneapi::group_local_memory_for_overwrite<long long[CH]>(it.get_group());
@@ -301,7 +313,7 @@ template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,con
    const float*query=q+(size_t(qi)*heads+kv*G)*HD;
    if(n_here<=0){if(t<G){ms[slot*G+t]=-FLT_MAX;ls[slot*G+t]=0.f;}return;}
    long long row_check=-1;
-   if(t<CH){long long r=-1;if(t<n_here){const int cell=ids[size_t(qi)*cap+c0+t];const int pg=p.page_table[cell/page];if(pg>=0)r=(static_cast<long long>(pg)*nkv+kv)*page+cell%page;}srow[t]=r;row_check=r;}
+   if(t<CH){long long r=-1;if(t<n_here){const int cell=ids[size_t(qi)*(scheduled?2051:cap)+c0+t];const int pg=p.page_table[cell/page];if(pg>=0)r=(static_cast<long long>(pg)*nkv+kv)*page+cell%page;}srow[t]=r;row_check=r;}
    const float down=1.f/16.f;
    bool full_resident=false;
    if constexpr(Mode!=0){
@@ -394,10 +406,60 @@ template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,con
 #pragma unroll
     for(int j=0;j<4;++j)pa[(size_t(slot)*G+h)*HD+d+j]=acc[h][j];}
    };
-   if constexpr(Mode==2||Mode==4){if(full_resident)do_pv(std::true_type{});else do_pv(std::false_type{});}
+   if constexpr(Mode==2||Mode==4||scheduled){if(full_resident)do_pv(std::true_type{});else do_pv(std::false_type{});}
    else do_pv(std::false_type{});
 
   });
+ if constexpr (scheduled) {
+  // A workgroup owns one output head. Its first subgroup computes rescaling
+  // weights once; every dimension then folds the chunks in their original order.
+  constexpr int chunk_count = 33;
+  queue.parallel_for<Merge<Mode>>(
+   sycl::nd_range<3>({size_t(nq), size_t(heads), HD}, {1, 1, HD}),
+   [=](sycl::nd_item<3> it) [[sycl::reqd_sub_group_size(32)]] {
+    const int qi = it.get_group(0), head = it.get_group(1), dim = it.get_local_id(2);
+    const int head_slot = (head / G) * chunk_count * G + head % G;
+    const size_t query_offset = size_t(qi) * stride;
+    const float* maxima = pm + query_offset + head_slot;
+    const float* sums = pl + query_offset + head_slot;
+    const float* partial = scratch + query_offset + head_slot * HD + dim;
+    auto group = it.get_group();
+    auto& weights = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[chunk_count]>(group);
+    auto& lengths = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[chunk_count]>(group);
+    auto& valid = *sycl::ext::oneapi::group_local_memory_for_overwrite<unsigned[2]>(group);
+    if (dim < 32) {
+     const auto sg = it.get_sub_group();
+     const float m = maxima[dim * G], tail = maxima[32 * G];
+     const float maximum = sycl::reduce_over_group(
+      sg, sycl::fmax(-FLT_MAX, sycl::fmax(m, tail)), sycl::maximum<float>());
+     weights[dim] = m != -FLT_MAX ? sycl::native::exp(m - maximum) : 0.f;
+     lengths[dim] = sums[dim * G];
+     const unsigned bits = sycl::reduce_over_group(
+      sg, m != -FLT_MAX ? (1u << dim) : 0u, sycl::bit_or<unsigned>());
+     if (dim == 0) {
+      valid[0] = bits;
+      valid[1] = unsigned(tail != -FLT_MAX);
+      weights[32] = tail != -FLT_MAX ? sycl::native::exp(tail - maximum) : 0.f;
+      lengths[32] = sums[32 * G];
+     }
+    }
+    it.barrier(sycl::access::fence_space::local_space);
+    float sum = 0.f, value = 0.f;
+    auto accumulate = [&](auto all_valid) {
+#pragma unroll 4
+     for (int c = 0; c < chunk_count; ++c) {
+      if constexpr (!decltype(all_valid)::value) {
+       if (!(valid[c / 32] & (1u << (c % 32)))) continue;
+      }
+      sum = sycl::fma(lengths[c], weights[c], sum);
+      value = sycl::fma(partial[c * G * HD], weights[c], value);
+     }
+    };
+    if (valid[0] == 0xffffffffu && valid[1]) accumulate(std::true_type{});
+    else accumulate(std::false_type{});
+    out[(size_t(qi) * heads + head) * HD + dim] = sum > 0.f ? value / sum : 0.f;
+   });
+ } else {
  queue.parallel_for<Merge<Mode>>(sycl::nd_range<3>(sycl::range<3>(1,nq,size_t(heads)*HD),sycl::range<3>(1,1,HD)),
   [=](sycl::nd_item<3>it)[[sycl::reqd_sub_group_size(32)]]{
    const int qi=it.get_group(1),head=it.get_group(2),d=it.get_local_id(2),kv=head/G,h=head%G;
@@ -410,6 +472,7 @@ template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,con
     const float w=sycl::native::exp(m-maximum);sum=sycl::fma(ls[slot*G+h],w,sum);value=sycl::fma(pa[(size_t(slot)*G+h)*HD+d],w,value);}
    out[(size_t(qi)*heads+head)*HD+d]=sum>0.f?value/sum:0.f;
   });
+ }
 }
 }
 
@@ -440,7 +503,12 @@ bool qsa_prompt_attn_tla_batch(const float*q,const QsaAttnPools&p,const int32_t*
  const bool subgroup_merge=merge_sg&&nq==16&&cap==2051;
  if(resident&&nq==16&&cap==2051&&!pv_vec2&&!subgroup_merge){
   static const bool key_reuse=[] {const char* v=std::getenv("STRATA_SYCL_TLA_KEY_REUSE");return v&&v[0]=='1';}();
-  if(key_reuse){
+  static const bool schedule=[] {const char* v=std::getenv("STRATA_SYCL_TLA_SCHEDULE");return v&&v[0]=='1';}();
+  if(schedule&&!key_reuse&&sh.page_size==4){
+   tla_prompt_resident::launch<5>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+   static thread_local bool announced_schedule=false;
+   if(!announced_schedule){std::fprintf(stderr,"strata: using SYCL TLA scheduled prompt attention\n");announced_schedule=true;}
+  }else if(key_reuse){
    tla_prompt_resident::launch<4>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
    static thread_local bool announced=false;
    if(!announced){std::fprintf(stderr,"strata: using SYCL TLA four-key reuse\n");announced=true;}
