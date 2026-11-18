@@ -241,6 +241,47 @@ namespace strata::kernels::tla_prompt_resident {
 using namespace tla_prompt_fp32;
 template<int>class Core;
 template<int>class Merge;
+
+// Full chunks have 64 valid rows. Reuse four decoded keys while visiting the
+// twelve query heads in pairs. The checked path still handles partial chunks.
+inline void qk_reuse_four_keys(const QsaAttnPools& p, const long long* srow,
+                               const float* query, float (&sp)[G][CH],
+                               int lane, int subgroup_id, sycl::sub_group sg) {
+ using namespace cute;
+ constexpr float down = 1.f / 16.f;
+     // Keep four decoded keys in registers. Each query fragment is reused for
+     // these four cells before loading the next two heads.
+     for(int first=subgroup_id; first<CH; first+=16){
+      float lo[4][8],hi[4][8];
+#pragma unroll
+      for(int i=0;i<4;++i)key16_tla(p,srow[first+4*i],lane,sg,lo[i],hi[i]);
+#pragma clang loop unroll(disable)
+      for(int hg=0;hg<G;hg+=2){
+       float qlo[2][8],qhi[2][8];
+#pragma unroll
+       for(int h=0;h<2;++h){
+        auto copy_query=[&](int d,float* dst){
+         auto src=make_tensor(make_gmem_ptr(query+(hg+h)*HD+d),make_shape(_8{}),make_stride(_1{}));
+         auto reg=make_tensor(make_rmem_ptr(dst),make_shape(_8{}),make_stride(_1{}));
+         copy(AutoVectorizingCopyWithAssumedAlignment<128>{},src,reg);
+        };
+        copy_query(lane*8,qlo[h]);copy_query((lane+16)*8,qhi[h]);
+       }
+#pragma unroll
+       for(int i=0;i<4;++i){
+        auto dot=[&](const float (&qv)[2][8],const float *k){
+         sycl::float2 v=sycl::float2(qv[0][1],qv[1][1])*k[1];
+         v=sycl::fma(sycl::float2(qv[0][0],qv[1][0]),sycl::float2(k[0]),v);
+#pragma unroll
+         for(int j=2;j<8;++j)v=sycl::fma(sycl::float2(qv[0][j],qv[1][j]),sycl::float2(k[j]),v);
+         return v;
+        };
+        auto v=sycl::reduce_over_group(sg,dot(qlo,lo[i])+dot(qhi,hi[i]),sycl::plus<sycl::float2>{});
+        if(lane==0){sp[hg][first+4*i]=v[0]*down;sp[hg+1][first+4*i]=v[1]*down;}
+       }
+      }
+     }
+}
 template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,const int32_t*ids,const int32_t*steps,
             int cap,QsaShapes sh,float*scratch,float*out,int nq){
  using namespace cute;
@@ -298,7 +339,10 @@ template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,con
      }
     }
    };
-   if constexpr(Mode!=0){if(full_resident)do_qk(std::true_type{});else do_qk(std::false_type{});}
+   if constexpr(Mode==4){
+    if(full_resident)qk_reuse_four_keys(p,srow,query,sp,lane,sgid,sg);
+    else do_qk(std::false_type{});
+   }else if constexpr(Mode!=0){if(full_resident)do_qk(std::true_type{});else do_qk(std::false_type{});}
    else do_qk(std::false_type{});
    it.barrier(sycl::access::fence_space::local_space);
    // Fold original warp32 offset16 first, then reproduce offsets8/4/2/1.
@@ -350,7 +394,7 @@ template<int Mode>void launch(sycl::queue&queue,const float*q,QsaAttnPools p,con
 #pragma unroll
     for(int j=0;j<4;++j)pa[(size_t(slot)*G+h)*HD+d+j]=acc[h][j];}
    };
-   if constexpr(Mode==2){if(full_resident)do_pv(std::true_type{});else do_pv(std::false_type{});}
+   if constexpr(Mode==2||Mode==4){if(full_resident)do_pv(std::true_type{});else do_pv(std::false_type{});}
    else do_pv(std::false_type{});
 
   });
@@ -395,7 +439,12 @@ bool qsa_prompt_attn_tla_batch(const float*q,const QsaAttnPools&p,const int32_t*
  static const bool resident=[] {const char*v=std::getenv("STRATA_SYCL_TLA_RESIDENT");return v&&v[0]=='1';}();
  const bool subgroup_merge=merge_sg&&nq==16&&cap==2051;
  if(resident&&nq==16&&cap==2051&&!pv_vec2&&!subgroup_merge){
-  tla_prompt_resident::launch<2>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+  static const bool key_reuse=[] {const char* v=std::getenv("STRATA_SYCL_TLA_KEY_REUSE");return v&&v[0]=='1';}();
+  if(key_reuse){
+   tla_prompt_resident::launch<4>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
+   static thread_local bool announced=false;
+   if(!announced){std::fprintf(stderr,"strata: using SYCL TLA four-key reuse\n");announced=true;}
+  }else tla_prompt_resident::launch<2>(*queue,q,p,ids,steps,int(cap),sh,scratch,out,int(nq));
   static thread_local bool announced_resident=false;
   if(!announced_resident){std::fprintf(stderr,"strata: using SYCL TLA resident-chunk prompt attention\n");announced_resident=true;}
  }else if(pv_vec2&&nq==16&&cap==2051){
